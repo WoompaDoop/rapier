@@ -99,7 +99,7 @@ impl BroadPhaseBvh {
         // Removals must be handled first, in case another collider in
         // `modified_colliders` shares the same index.
         for handle in removed_colliders {
-            self.tree.remove(handle.into_raw_parts().0);
+            self.tree.remove(handle.into_raw_parts());
         }
 
         // if modified_colliders.is_empty() {
@@ -125,7 +125,7 @@ impl BroadPhaseBvh {
 
                 self.tree.insert_or_update_partially(
                     aabb,
-                    modified.into_raw_parts().0,
+                    modified.into_raw_parts(),
                     change_detection_skin,
                 );
             }
@@ -178,11 +178,13 @@ impl BroadPhaseBvh {
 
         let mut pairs_collector = |co1: u32, co2: u32| {
             assert_ne!(co1, co2);
+            let mut handle1 = ColliderHandle::from_raw_parts(co1);
+            let mut handle2 = ColliderHandle::from_raw_parts(co2);
 
-            let Some((_, mut handle1)) = colliders.get_unknown_gen(co1) else {
+            let Some(_) = colliders.get(handle1) else {
                 return;
             };
-            let Some((_, mut handle2)) = colliders.get_unknown_gen(co2) else {
+            let Some(_) = colliders.get(handle2) else {
                 return;
             };
 
@@ -226,10 +228,10 @@ impl BroadPhaseBvh {
                     return false;
                 }
 
-                let Some(node0) = self.tree.leaf_node(h0.into_raw_parts().0) else {
+                let Some(node0) = self.tree.leaf_node(h0.into_raw_parts()) else {
                     return false;
                 };
-                let Some(node1) = self.tree.leaf_node(h1.into_raw_parts().0) else {
+                let Some(node1) = self.tree.leaf_node(h1.into_raw_parts()) else {
                     return false;
                 };
 
@@ -271,7 +273,7 @@ impl BroadPhaseBvh {
         };
         self.tree.insert_with_change_detection(
             aabb,
-            handle.into_raw_parts().0,
+            handle.into_raw_parts(),
             change_detection_skin,
         );
     }

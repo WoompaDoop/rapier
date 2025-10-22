@@ -15,20 +15,19 @@ use crate::dynamics::{GenericJoint, IslandManager, RigidBodyHandle, RigidBodySet
 pub struct ImpulseJointHandle(pub crate::data::arena::Index);
 
 impl ImpulseJointHandle {
-    /// Converts this handle into its (index, generation) components.
-    pub fn into_raw_parts(self) -> (u32, u32) {
+    /// Converts this handle into its index component.
+    pub fn into_raw_parts(self) -> u32 {
         self.0.into_raw_parts()
     }
 
     /// Reconstructs an handle from its (index, generation) components.
-    pub fn from_raw_parts(id: u32, generation: u32) -> Self {
-        Self(crate::data::arena::Index::from_raw_parts(id, generation))
+    pub fn from_raw_parts(id: u32) -> Self {
+        Self(crate::data::arena::Index::from_raw_parts(id))
     }
 
     /// An always-invalid joint handle.
     pub fn invalid() -> Self {
         Self(crate::data::arena::Index::from_raw_parts(
-            crate::INVALID_U32,
             crate::INVALID_U32,
         ))
     }
@@ -229,32 +228,6 @@ impl ImpulseJointSet {
             }
         }
         joint
-    }
-
-    /// Gets a joint by index without knowing the generation (advanced/unsafe).
-    ///
-    /// ⚠️ **Prefer `get()` instead!** This bypasses generation checks.
-    /// See [`RigidBodySet::get_unknown_gen`] for details on the ABA problem.
-    pub fn get_unknown_gen(&self, i: u32) -> Option<(&ImpulseJoint, ImpulseJointHandle)> {
-        let (id, handle) = self.joint_ids.get_unknown_gen(i)?;
-        Some((
-            self.joint_graph.graph.edge_weight(*id)?,
-            ImpulseJointHandle(handle),
-        ))
-    }
-
-    /// Gets a mutable joint by index without knowing the generation (advanced/unsafe).
-    ///
-    /// ⚠️ **Prefer `get_mut()` instead!** This bypasses generation checks.
-    pub fn get_unknown_gen_mut(
-        &mut self,
-        i: u32,
-    ) -> Option<(&mut ImpulseJoint, ImpulseJointHandle)> {
-        let (id, handle) = self.joint_ids.get_unknown_gen(i)?;
-        Some((
-            self.joint_graph.graph.edge_weight_mut(*id)?,
-            ImpulseJointHandle(handle),
-        ))
     }
 
     /// Iterates over all joints in this collection.

@@ -110,7 +110,8 @@ impl TypedCompositeShape for QueryPipeline<'_> {
             Option<&Self::PartNormalConstraints>,
         ) -> T,
     ) -> Option<T> {
-        let (co, co_handle) = self.colliders.get_unknown_gen(shape_id)?;
+        let co_handle = ColliderHandle::from_raw_parts(shape_id);
+        let co = self.colliders.get(co_handle)?;
 
         if self.filter.test(self.bodies, co_handle, co) {
             Some(f(Some(co.position()), co.shape(), None))
@@ -124,7 +125,8 @@ impl TypedCompositeShape for QueryPipeline<'_> {
         shape_id: u32,
         mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape, Option<&dyn NormalConstraints>) -> T,
     ) -> Option<T> {
-        let (co, co_handle) = self.colliders.get_unknown_gen(shape_id)?;
+        let co_handle = ColliderHandle::from_raw_parts(shape_id);
+        let co = self.colliders.get(co_handle)?;
 
         if self.filter.test(self.bodies, co_handle, co) {
             Some(f(Some(co.position()), co.shape(), None))
@@ -172,7 +174,8 @@ impl BroadPhaseBvh {
 
 impl<'a> QueryPipeline<'a> {
     fn id_to_handle<T>(&self, (id, data): (u32, T)) -> Option<(ColliderHandle, T)> {
-        self.colliders.get_unknown_gen(id).map(|(_, h)| (h, data))
+        let co_handle = ColliderHandle::from_raw_parts(id);
+        self.colliders.get(co_handle).map(|_| (co_handle, data))
     }
 
     /// Replaces [`Self::filter`] with different filtering rules.
@@ -299,7 +302,8 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().intersects_local_ray(&ray, max_toi))
             .filter_map(move |leaf| {
-                let (co, co_handle) = self.colliders.get_unknown_gen(leaf)?;
+                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co = self.colliders.get(co_handle)?;
                 if self.filter.test(self.bodies, co_handle, co) {
                     if let Some(intersection) =
                         co.shape
@@ -387,7 +391,8 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().contains_local_point(&point))
             .filter_map(move |leaf| {
-                let (co, co_handle) = self.colliders.get_unknown_gen(leaf)?;
+                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co = self.colliders.get(co_handle)?;
                 if self.filter.test(self.bodies, co_handle, co)
                     && co.shape.contains_point(co.position(), &point)
                 {
@@ -410,7 +415,7 @@ impl<'a> QueryPipeline<'a> {
         point: &Point<Real>,
     ) -> Option<(ColliderHandle, PointProjection, FeatureId)> {
         let (id, (proj, feat)) = CompositeShapeRef(self).project_local_point_and_get_feature(point);
-        let handle = self.colliders.get_unknown_gen(id)?.1;
+        let handle = ColliderHandle::from_raw_parts(id);
         Some((handle, proj, feat))
     }
 
@@ -427,7 +432,8 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().intersects(&aabb))
             .filter_map(move |leaf| {
-                let (co, co_handle) = self.colliders.get_unknown_gen(leaf)?;
+                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co = self.colliders.get(co_handle)?;
                 // NOTE: do **not** recompute and check the latest collider AABB.
                 //       Checking only against the one in the BVH is useful, e.g., for conservative
                 //       scene queries for CCD.
@@ -546,7 +552,8 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().intersects(&shape_aabb))
             .filter_map(move |leaf| {
-                let (co, co_handle) = self.colliders.get_unknown_gen(leaf)?;
+                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co = self.colliders.get(co_handle)?;
                 if self.filter.test(self.bodies, co_handle, co) {
                     let pos12 = shape_pos.inv_mul(co.position());
                     if self.dispatcher.intersection_test(&pos12, shape, co.shape()) == Ok(true) {

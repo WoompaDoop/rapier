@@ -237,35 +237,6 @@ impl RigidBodySet {
         Some(rb)
     }
 
-    /// Gets a rigid body by its index without knowing the generation number.
-    ///
-    /// ⚠️ **Advanced/unsafe usage** - prefer [`get()`](Self::get) instead!
-    ///
-    /// This bypasses the generation check that normally protects against the ABA problem
-    /// (where an index gets reused after removal). Only use this if you're certain the
-    /// body at this index is the one you expect.
-    ///
-    /// Returns both the body and its current handle (with the correct generation).
-    pub fn get_unknown_gen(&self, i: u32) -> Option<(&RigidBody, RigidBodyHandle)> {
-        self.bodies
-            .get_unknown_gen(i)
-            .map(|(b, h)| (b, RigidBodyHandle(h)))
-    }
-
-    /// Gets a mutable reference to a rigid body by its index without knowing the generation.
-    ///
-    /// ⚠️ **Advanced/unsafe usage** - prefer [`get_mut()`](Self::get_mut) instead!
-    ///
-    /// This bypasses the generation check. See [`get_unknown_gen()`](Self::get_unknown_gen)
-    /// for more details on when this is appropriate (rarely).
-    #[cfg(not(feature = "dev-remove-slow-accessors"))]
-    pub fn get_unknown_gen_mut(&mut self, i: u32) -> Option<(&mut RigidBody, RigidBodyHandle)> {
-        let (rb, handle) = self.bodies.get_unknown_gen_mut(i)?;
-        let handle = RigidBodyHandle(handle);
-        self.modified_bodies.push_once(handle, rb);
-        Some((rb, handle))
-    }
-
     /// Gets a read-only reference to the rigid body with the given handle.
     ///
     /// Returns `None` if the handle is invalid or the body was removed.

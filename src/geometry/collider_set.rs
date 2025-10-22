@@ -87,7 +87,7 @@ impl ColliderSet {
     ///
     /// Useful as a sentinel/placeholder value.
     pub fn invalid_handle() -> ColliderHandle {
-        ColliderHandle::from_raw_parts(crate::INVALID_U32, crate::INVALID_U32)
+        ColliderHandle::from_raw_parts(crate::INVALID_U32)
     }
 
     /// Iterates over all colliders in this collection.
@@ -345,27 +345,6 @@ impl ColliderSet {
         self.removed_colliders.push(handle);
 
         Some(collider)
-    }
-
-    /// Gets a collider by its index without knowing the generation number.
-    ///
-    /// ⚠️ **Advanced/unsafe usage** - prefer [`get()`](Self::get) instead! See [`RigidBodySet::get_unknown_gen`] for details.
-    pub fn get_unknown_gen(&self, i: u32) -> Option<(&Collider, ColliderHandle)> {
-        self.colliders
-            .get_unknown_gen(i)
-            .map(|(c, h)| (c, ColliderHandle(h)))
-    }
-
-    /// Gets a mutable reference to a collider by its index without knowing the generation.
-    ///
-    /// ⚠️ **Advanced/unsafe usage** - prefer [`get_mut()`](Self::get_mut) instead!
-    /// suffer form the ABA problem.
-    #[cfg(not(feature = "dev-remove-slow-accessors"))]
-    pub fn get_unknown_gen_mut(&mut self, i: u32) -> Option<(&mut Collider, ColliderHandle)> {
-        let (collider, handle) = self.colliders.get_unknown_gen_mut(i)?;
-        let handle = ColliderHandle(handle);
-        self.modified_colliders.push_once(handle, collider);
-        Some((collider, handle))
     }
 
     /// Gets a read-only reference to the collider with the given handle.

@@ -117,22 +117,6 @@ impl NarrowPhase {
         &self.intersection_graph
     }
 
-    /// All the contacts involving the given collider.
-    ///
-    /// It is strongly recommended to use the [`NarrowPhase::contact_pairs_with`] method instead. This
-    /// method can be used if the generation number of the collider handle isn't known.
-    pub fn contact_pairs_with_unknown_gen(
-        &self,
-        collider: u32,
-    ) -> impl Iterator<Item = &ContactPair> {
-        self.graph_indices
-            .get_unknown_gen(collider)
-            .map(|id| id.contact_graph_index)
-            .into_iter()
-            .flat_map(move |id| self.contact_graph.interactions_with(id))
-            .map(|pair| pair.2)
-    }
-
     /// All the contact pairs involving the given collider.
     ///
     /// The returned contact pairs identify pairs of colliders with intersecting bounding-volumes.
@@ -148,25 +132,6 @@ impl NarrowPhase {
             .into_iter()
             .flat_map(move |id| self.contact_graph.interactions_with(id))
             .map(|pair| pair.2)
-    }
-
-    /// All the intersection pairs involving the given collider.
-    ///
-    /// It is strongly recommended to use the [`NarrowPhase::intersection_pairs_with`]  method instead.
-    /// This method can be used if the generation number of the collider handle isn't known.
-    pub fn intersection_pairs_with_unknown_gen(
-        &self,
-        collider: u32,
-    ) -> impl Iterator<Item = (ColliderHandle, ColliderHandle, bool)> + '_ {
-        self.graph_indices
-            .get_unknown_gen(collider)
-            .map(|id| id.intersection_graph_index)
-            .into_iter()
-            .flat_map(move |id| {
-                self.intersection_graph
-                    .interactions_with(id)
-                    .map(|e| (e.0, e.1, e.2.intersecting))
-            })
     }
 
     /// All the intersection pairs involving the given collider, where at least one collider
@@ -197,22 +162,6 @@ impl NarrowPhase {
 
     /// The contact pair involving two specific colliders.
     ///
-    /// It is strongly recommended to use the [`NarrowPhase::contact_pair`] method instead. This
-    /// method can be used if the generation number of the collider handle isn't known.
-    ///
-    /// If this returns `None`, there is no contact between the two colliders.
-    /// If this returns `Some`, then there may be a contact between the two colliders. Check the
-    /// result [`ContactPair::has_any_active_contact`] method to see if there is an actual contact.
-    pub fn contact_pair_unknown_gen(&self, collider1: u32, collider2: u32) -> Option<&ContactPair> {
-        let id1 = self.graph_indices.get_unknown_gen(collider1)?;
-        let id2 = self.graph_indices.get_unknown_gen(collider2)?;
-        self.contact_graph
-            .interaction_pair(id1.contact_graph_index, id2.contact_graph_index)
-            .map(|c| c.2)
-    }
-
-    /// The contact pair involving two specific colliders.
-    ///
     /// If this returns `None`, there is no contact between the two colliders.
     /// If this returns `Some`, then there may be a contact between the two colliders. Check the
     /// result [`ContactPair::has_any_active_contact`] method to see if there is an actual contact.
@@ -226,21 +175,6 @@ impl NarrowPhase {
         self.contact_graph
             .interaction_pair(id1.contact_graph_index, id2.contact_graph_index)
             .map(|c| c.2)
-    }
-
-    /// The intersection pair involving two specific colliders.
-    ///
-    /// It is strongly recommended to use the [`NarrowPhase::intersection_pair`] method instead. This
-    /// method can be used if the generation number of the collider handle isn't known.
-    ///
-    /// If this returns `None` or `Some(false)`, then there is no intersection between the two colliders.
-    /// If this returns `Some(true)`, then there may be an intersection between the two colliders.
-    pub fn intersection_pair_unknown_gen(&self, collider1: u32, collider2: u32) -> Option<bool> {
-        let id1 = self.graph_indices.get_unknown_gen(collider1)?;
-        let id2 = self.graph_indices.get_unknown_gen(collider2)?;
-        self.intersection_graph
-            .interaction_pair(id1.intersection_graph_index, id2.intersection_graph_index)
-            .map(|c| c.2.intersecting)
     }
 
     /// The intersection pair involving two specific colliders.

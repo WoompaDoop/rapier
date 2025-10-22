@@ -177,7 +177,7 @@ impl CCDSolver {
 
                         if pairs_seen
                             .insert(
-                                SortedPair::new(ch1.into_raw_parts().0, ch2.into_raw_parts().0),
+                                SortedPair::new(ch1.into_raw_parts(), ch2.into_raw_parts()),
                                 (),
                             )
                             .is_none()
@@ -306,7 +306,7 @@ impl CCDSolver {
 
                         if pairs_seen
                             .insert(
-                                SortedPair::new(ch1.into_raw_parts().0, ch2.into_raw_parts().0),
+                                SortedPair::new(ch1.into_raw_parts(), ch2.into_raw_parts()),
                                 (),
                             )
                             .is_none()

@@ -18,20 +18,19 @@ pub struct MultibodyJointHandle(pub Index);
 pub struct MultibodyIndex(pub Index);
 
 impl MultibodyJointHandle {
-    /// Converts this handle into its (index, generation) components.
-    pub fn into_raw_parts(self) -> (u32, u32) {
+    /// Converts this handle into its index component.
+    pub fn into_raw_parts(self) -> u32 {
         self.0.into_raw_parts()
     }
 
-    /// Reconstructs an handle from its (index, generation) components.
-    pub fn from_raw_parts(id: u32, generation: u32) -> Self {
-        Self(Index::from_raw_parts(id, generation))
+    /// Reconstructs an handle from its index component.
+    pub fn from_raw_parts(id: u32) -> Self {
+        Self(Index::from_raw_parts(id))
     }
 
     /// An always-invalid rigid-body handle.
     pub fn invalid() -> Self {
         Self(Index::from_raw_parts(
-            crate::INVALID_U32,
             crate::INVALID_U32,
         ))
     }
@@ -76,7 +75,6 @@ impl Default for MultibodyLinkId {
         Self {
             graph_id: RigidBodyGraphIndex::new(crate::INVALID_U32),
             multibody: MultibodyIndex(Index::from_raw_parts(
-                crate::INVALID_U32,
                 crate::INVALID_U32,
             )),
             id: 0,
@@ -356,26 +354,6 @@ impl MultibodyJointSet {
         let link = self.rb2mb.get(handle.0)?;
         let multibody = self.multibodies.get_mut(link.multibody.0)?;
         Some((multibody, link.id))
-    }
-
-    /// Gets the joint with the given handle without a known generation.
-    ///
-    /// This is useful when you know you want the joint at index `i` but
-    /// don't know what is its current generation number. Generation numbers are
-    /// used to protect from the ABA problem because the joint position `i`
-    /// are recycled between two insertion and a removal.
-    ///
-    /// Using this is discouraged in favor of `self.get(handle)` which does not
-    /// suffer form the ABA problem.
-    pub fn get_unknown_gen(&self, i: u32) -> Option<(&Multibody, usize, MultibodyJointHandle)> {
-        let link = self.rb2mb.get_unknown_gen(i)?;
-        let generation = self.rb2mb.get_gen(i)?;
-        let multibody = self.multibodies.get(link.multibody.0)?;
-        Some((
-            multibody,
-            link.id,
-            MultibodyJointHandle(Index::from_raw_parts(i, generation)),
-        ))
     }
 
     /// Returns the joint between two rigid-bodies (if it exists).
