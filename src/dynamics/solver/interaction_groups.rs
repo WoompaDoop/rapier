@@ -34,7 +34,7 @@ impl PairInteraction for JointGraphEdge {
 #[cfg(feature = "parallel")]
 #[allow(dead_code)] // That will likely be useful when we re-introduce intra-island parallelism.
 pub(crate) struct ParallelInteractionGroups {
-    bodies_color: Vec<u128>,         // Workspace.
+    bodies_color: Vec<u64>,         // Workspace.
     interaction_indices: Vec<usize>, // Workspace.
     interaction_colors: Vec<usize>,  // Workspace.
     sorted_interactions: Vec<usize>,
@@ -172,7 +172,7 @@ pub(crate) struct InteractionGroups {
     #[cfg(feature = "simd-is-enabled")]
     buckets: VecMap<([usize; SIMD_WIDTH], usize)>,
     #[cfg(feature = "simd-is-enabled")]
-    body_masks: Vec<u128>,
+    body_masks: Vec<u64>,
     pub simd_interactions: Vec<ContactManifoldIndex>,
     pub nongrouped_interactions: Vec<ContactManifoldIndex>,
 }

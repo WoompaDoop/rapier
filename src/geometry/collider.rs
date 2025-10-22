@@ -57,7 +57,7 @@ pub struct Collider {
     contact_skin: Real,
     contact_force_event_threshold: Real,
     /// User-defined data associated to this collider.
-    pub user_data: u128,
+    pub user_data: u64,
 }
 
 impl Collider {
@@ -661,7 +661,7 @@ pub struct ColliderBuilder {
     /// Events enabled for this collider.
     pub active_events: ActiveEvents,
     /// The user-data of the collider being built.
-    pub user_data: u128,
+    pub user_data: u64,
     /// The collision groups for the collider being built.
     pub collision_groups: InteractionGroups,
     /// The solver groups for the collider being built.
@@ -1123,10 +1123,10 @@ impl ColliderBuilder {
     /// # Example
     /// ```ignore
     /// let collider = ColliderBuilder::ball(0.5)
-    ///     .user_data(entity_id as u128)
+    ///     .user_data(entity_id as u64)
     ///     .build();
     /// ```
-    pub fn user_data(mut self, data: u128) -> Self {
+    pub fn user_data(mut self, data: u64) -> Self {
         self.user_data = data;
         self
     }

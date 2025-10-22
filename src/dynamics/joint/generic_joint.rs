@@ -285,7 +285,7 @@ pub struct GenericJoint {
     /// Whether the joint is enabled.
     pub enabled: JointEnabled,
     /// User-defined data associated to this joint.
-    pub user_data: u128,
+    pub user_data: u64,
 }
 
 impl Default for GenericJoint {
@@ -766,7 +766,7 @@ impl GenericJointBuilder {
     }
 
     /// An arbitrary user-defined 128-bit integer associated to the joints built by this builder.
-    pub fn user_data(mut self, data: u128) -> Self {
+    pub fn user_data(mut self, data: u64) -> Self {
         self.0.user_data = data;
         self
     }

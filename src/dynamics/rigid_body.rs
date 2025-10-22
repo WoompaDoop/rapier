@@ -60,7 +60,7 @@ pub struct RigidBody {
     pub(crate) enabled: bool,
     pub(crate) additional_solver_iterations: usize,
     /// User-defined data associated to this rigid-body.
-    pub user_data: u128,
+    pub user_data: u64,
 }
 
 impl Default for RigidBody {
@@ -1492,7 +1492,7 @@ pub struct RigidBodyBuilder {
     /// Will the rigid-body being built be enabled?
     pub enabled: bool,
     /// An arbitrary user-defined 128-bit integer associated to the rigid-bodies built by this builder.
-    pub user_data: u128,
+    pub user_data: u64,
     /// The additional number of solver iterations run for this rigid-body and
     /// everything interacting with it.
     ///
@@ -1666,7 +1666,7 @@ impl RigidBodyBuilder {
     }
 
     /// An arbitrary user-defined 128-bit integer associated to the rigid-bodies built by this builder.
-    pub fn user_data(mut self, data: u128) -> Self {
+    pub fn user_data(mut self, data: u64) -> Self {
         self.user_data = data;
         self
     }
