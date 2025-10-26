@@ -1,9 +1,10 @@
-use crate::data::{Arena, HasModifiedFlag, ModifiedObjects};
+use crate::data::{HasModifiedFlag, ModifiedObjects};
 use crate::dynamics::{
     ImpulseJointSet, IslandManager, MultibodyJointSet, RigidBody, RigidBodyBuilder,
     RigidBodyChanges, RigidBodyHandle,
 };
 use crate::geometry::ColliderSet;
+use std::collections::BTreeMap;
 use std::ops::{Index, IndexMut};
 
 #[cfg(doc)]
@@ -72,7 +73,7 @@ pub struct RigidBodySet {
     // to avoid borrowing issues. It is also needed for
     // parallelism because the `Receiver` breaks the Sync impl.
     // Could we avoid this?
-    pub(crate) bodies: Arena<RigidBody>,
+    pub(crate) bodies: crate::data::cool_map::CoolMap<RigidBody>,
     pub(crate) modified_bodies: ModifiedRigidBodies,
     #[cfg_attr(feature = "serde-serialize", serde(skip))]
     pub(crate) default_fixed: RigidBody,
@@ -85,27 +86,8 @@ impl RigidBodySet {
     /// automatically grow as you add more bodies.
     pub fn new() -> Self {
         RigidBodySet {
-            bodies: Arena::new(),
+            bodies: crate::data::cool_map::CoolMap::new(),
             modified_bodies: ModifiedObjects::default(),
-            default_fixed: RigidBodyBuilder::fixed().build(),
-        }
-    }
-
-    /// Creates a new collection with pre-allocated space for the given number of bodies.
-    ///
-    /// Use this if you know approximately how many bodies you'll need, to avoid
-    /// multiple reallocations as the collection grows.
-    ///
-    /// # Example
-    /// ```
-    /// # use rapier3d::prelude::*;
-    /// // You know you'll have ~1000 bodies
-    /// let mut bodies = RigidBodySet::with_capacity(1000);
-    /// ```
-    pub fn with_capacity(capacity: usize) -> Self {
-        RigidBodySet {
-            bodies: Arena::with_capacity(capacity),
-            modified_bodies: ModifiedRigidBodies::with_capacity(capacity),
             default_fixed: RigidBodyBuilder::fixed().build(),
         }
     }
@@ -128,7 +110,7 @@ impl RigidBodySet {
     ///
     /// Returns `false` if the body was removed or the handle is invalid.
     pub fn contains(&self, handle: RigidBodyHandle) -> bool {
-        self.bodies.contains(handle.0)
+        self.bodies.contains_key(&handle.0)
     }
 
     /// Adds a rigid body to the world and returns its handle for future access.
@@ -147,14 +129,14 @@ impl RigidBodySet {
     /// );
     /// // Store `handle` to access this body later
     /// ```
-    pub fn insert(&mut self, rb: impl Into<RigidBody>) -> RigidBodyHandle {
+    pub fn insert(&mut self, key_base: u32, rb: impl Into<RigidBody>) -> RigidBodyHandle {
         let mut rb = rb.into();
         // Make sure the internal links are reset, they may not be
         // if this rigid-body was obtained by cloning another one.
         rb.reset_internal_references();
         rb.changes.set(RigidBodyChanges::all(), true);
 
-        let handle = RigidBodyHandle(self.bodies.insert(rb));
+        let handle = RigidBodyHandle(self.bodies.insert(key_base, rb));
         // Using push_unchecked because this is a brand new rigid-body with the MODIFIED
         // flags set but isn’t in the modified_bodies yet.
         self.modified_bodies
@@ -207,7 +189,7 @@ impl RigidBodySet {
         multibody_joints: &mut MultibodyJointSet,
         remove_attached_colliders: bool,
     ) -> Option<RigidBody> {
-        let rb = self.bodies.remove(handle.0)?;
+        let rb = self.bodies.remove(&handle.0)?;
         /*
          * Update active sets.
          */
@@ -243,7 +225,7 @@ impl RigidBodySet {
     ///
     /// Use this to read body properties like position, velocity, mass, etc.
     pub fn get(&self, handle: RigidBodyHandle) -> Option<&RigidBody> {
-        self.bodies.get(handle.0)
+        self.bodies.get(&handle.0)
     }
 
     /// Gets a mutable reference to the rigid body with the given handle.
@@ -264,52 +246,13 @@ impl RigidBodySet {
     /// ```
     #[cfg(not(feature = "dev-remove-slow-accessors"))]
     pub fn get_mut(&mut self, handle: RigidBodyHandle) -> Option<&mut RigidBody> {
-        let result = self.bodies.get_mut(handle.0)?;
+        let result = self.bodies.get_mut(&handle.0)?;
         self.modified_bodies.push_once(handle, result);
         Some(result)
     }
 
-    /// Gets mutable references to two different rigid bodies at once.
-    ///
-    /// This is useful when you need to modify two bodies simultaneously (e.g., when manually
-    /// handling collisions between them). If both handles are the same, only the first value
-    /// will be `Some`.
-    ///
-    /// # Example
-    /// ```
-    /// # use rapier3d::prelude::*;
-    /// # let mut bodies = RigidBodySet::new();
-    /// # let handle1 = bodies.insert(RigidBodyBuilder::dynamic());
-    /// # let handle2 = bodies.insert(RigidBodyBuilder::dynamic());
-    /// let (body1, body2) = bodies.get_pair_mut(handle1, handle2);
-    /// if let (Some(b1), Some(b2)) = (body1, body2) {
-    ///     // Can modify both bodies at once
-    ///     b1.apply_impulse(vector![10.0, 0.0, 0.0], true);
-    ///     b2.apply_impulse(vector![-10.0, 0.0, 0.0], true);
-    /// }
-    /// ```
-    #[cfg(not(feature = "dev-remove-slow-accessors"))]
-    pub fn get_pair_mut(
-        &mut self,
-        handle1: RigidBodyHandle,
-        handle2: RigidBodyHandle,
-    ) -> (Option<&mut RigidBody>, Option<&mut RigidBody>) {
-        if handle1 == handle2 {
-            (self.get_mut(handle1), None)
-        } else {
-            let (mut rb1, mut rb2) = self.bodies.get2_mut(handle1.0, handle2.0);
-            if let Some(rb1) = rb1.as_deref_mut() {
-                self.modified_bodies.push_once(handle1, rb1);
-            }
-            if let Some(rb2) = rb2.as_deref_mut() {
-                self.modified_bodies.push_once(handle2, rb2);
-            }
-            (rb1, rb2)
-        }
-    }
-
     pub(crate) fn get_mut_internal(&mut self, handle: RigidBodyHandle) -> Option<&mut RigidBody> {
-        self.bodies.get_mut(handle.0)
+        self.bodies.get_mut(&handle.0)
     }
 
     pub(crate) fn index_mut_internal(&mut self, handle: RigidBodyHandle) -> &mut RigidBody {
@@ -322,7 +265,7 @@ impl RigidBodySet {
         &mut self,
         handle: RigidBodyHandle,
     ) -> Option<&mut RigidBody> {
-        let result = self.bodies.get_mut(handle.0)?;
+        let result = self.bodies.get_mut(&handle.0)?;
         self.modified_bodies.push_once(handle, result);
         Some(result)
     }
@@ -342,7 +285,7 @@ impl RigidBodySet {
     /// }
     /// ```
     pub fn iter(&self) -> impl Iterator<Item = (RigidBodyHandle, &RigidBody)> {
-        self.bodies.iter().map(|(h, b)| (RigidBodyHandle(h), b))
+        self.bodies.iter().map(|(h, b)| (RigidBodyHandle(*h), b))
     }
 
     /// Iterates over all rigid bodies with mutable access.
@@ -369,8 +312,8 @@ impl RigidBodySet {
         self.bodies.iter_mut().map(move |(h, b)| {
             // NOTE: using `push_unchecked` because we just cleared `modified_bodies`
             //       before iterating.
-            modified_bodies.push_unchecked(RigidBodyHandle(h), b);
-            (RigidBodyHandle(h), b)
+            modified_bodies.push_unchecked(RigidBodyHandle(*h), b);
+            (RigidBodyHandle(*h), b)
         })
     }
 
@@ -405,10 +348,10 @@ impl Index<RigidBodyHandle> for RigidBodySet {
     }
 }
 
-impl Index<crate::data::Index> for RigidBodySet {
+impl Index<crate::data::CoolKey> for RigidBodySet {
     type Output = RigidBody;
 
-    fn index(&self, index: crate::data::Index) -> &RigidBody {
+    fn index(&self, index: crate::data::CoolKey) -> &RigidBody {
         &self.bodies[index]
     }
 }

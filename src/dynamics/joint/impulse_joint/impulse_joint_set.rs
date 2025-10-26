@@ -1,33 +1,37 @@
+use std::collections::BTreeMap;
+
 use parry::utils::hashset::HashSet;
 
 use super::ImpulseJoint;
 use crate::geometry::{InteractionGraph, RigidBodyGraphIndex, TemporaryInteractionIndex};
 
-use crate::data::Coarena;
-use crate::data::arena::Arena;
+use crate::data::cool_map::CoolMap;
 use crate::dynamics::{GenericJoint, IslandManager, RigidBodyHandle, RigidBodySet};
 
 /// The unique identifier of a joint added to the joint set.
 /// The unique identifier of a collider added to a collider set.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 #[repr(transparent)]
-pub struct ImpulseJointHandle(pub crate::data::arena::Index);
+pub struct ImpulseJointHandle(pub crate::data::cool_map::CoolKey);
 
 impl ImpulseJointHandle {
     /// Converts this handle into its index component.
-    pub fn into_raw_parts(self) -> u32 {
+    pub fn into_raw_parts(self) -> (u32, u32) {
         self.0.into_raw_parts()
     }
 
     /// Reconstructs an handle from its (index, generation) components.
-    pub fn from_raw_parts(id: u32) -> Self {
-        Self(crate::data::arena::Index::from_raw_parts(id))
+    pub fn from_raw_parts(base_key: u32, count: u32) -> Self {
+        Self(crate::data::cool_map::CoolKey::from_raw_parts(
+            base_key, count,
+        ))
     }
 
     /// An always-invalid joint handle.
     pub fn invalid() -> Self {
-        Self(crate::data::arena::Index::from_raw_parts(
+        Self(crate::data::cool_map::CoolKey::from_raw_parts(
+            crate::INVALID_U32,
             crate::INVALID_U32,
         ))
     }
@@ -66,9 +70,9 @@ pub(crate) type JointGraphEdge = crate::data::graph::Edge<ImpulseJoint>;
 /// let handle = joints.insert(body1, body2, joint, true);
 /// ```
 pub struct ImpulseJointSet {
-    rb_graph_ids: Coarena<RigidBodyGraphIndex>,
+    rb_graph_ids: BTreeMap<RigidBodyHandle, RigidBodyGraphIndex>,
     /// Map joint handles to edge ids on the graph.
-    joint_ids: Arena<TemporaryInteractionIndex>,
+    joint_ids: CoolMap<TemporaryInteractionIndex>,
     joint_graph: InteractionGraph<RigidBodyHandle, ImpulseJoint>,
     /// A set of rigid-body handles to wake-up during the next timestep.
     pub(crate) to_wake_up: HashSet<RigidBodyHandle>,
@@ -78,8 +82,8 @@ impl ImpulseJointSet {
     /// Creates a new empty set of impulse_joints.
     pub fn new() -> Self {
         Self {
-            rb_graph_ids: Coarena::new(),
-            joint_ids: Arena::new(),
+            rb_graph_ids: BTreeMap::new(),
+            joint_ids: CoolMap::new(),
             joint_graph: InteractionGraph::new(),
             to_wake_up: HashSet::default(),
         }
@@ -125,8 +129,8 @@ impl ImpulseJointSet {
         body2: RigidBodyHandle,
     ) -> impl Iterator<Item = (ImpulseJointHandle, &ImpulseJoint)> {
         self.rb_graph_ids
-            .get(body1.0)
-            .zip(self.rb_graph_ids.get(body2.0))
+            .get(&body1)
+            .zip(self.rb_graph_ids.get(&body2))
             .into_iter()
             .flat_map(move |(id1, id2)| self.joint_graph.interaction_pair(*id1, *id2).into_iter())
             .map(|inter| (inter.2.handle, inter.2))
@@ -162,7 +166,7 @@ impl ImpulseJointSet {
         ),
     > {
         self.rb_graph_ids
-            .get(body.0)
+            .get(&body)
             .into_iter()
             .flat_map(move |id| self.joint_graph.interactions_with(*id))
             .map(|inter| (inter.0, inter.1, inter.2.handle, inter.2))
@@ -174,7 +178,7 @@ impl ImpulseJointSet {
         body: RigidBodyHandle,
         mut f: impl FnMut(RigidBodyHandle, RigidBodyHandle, ImpulseJointHandle, &mut ImpulseJoint),
     ) {
-        self.rb_graph_ids.get(body.0).into_iter().for_each(|id| {
+        self.rb_graph_ids.get(&body).into_iter().for_each(|id| {
             for inter in self.joint_graph.interactions_with_mut(*id) {
                 (f)(inter.0, inter.1, inter.3.handle, inter.3)
             }
@@ -201,12 +205,12 @@ impl ImpulseJointSet {
 
     /// Checks if the given joint handle is valid (joint still exists).
     pub fn contains(&self, handle: ImpulseJointHandle) -> bool {
-        self.joint_ids.contains(handle.0)
+        self.joint_ids.contains_key(&handle.0)
     }
 
     /// Returns a read-only reference to the joint with the given handle.
     pub fn get(&self, handle: ImpulseJointHandle) -> Option<&ImpulseJoint> {
-        let id = self.joint_ids.get(handle.0)?;
+        let id = self.joint_ids.get(&handle.0)?;
         self.joint_graph.graph.edge_weight(*id)
     }
 
@@ -219,7 +223,7 @@ impl ImpulseJointSet {
         handle: ImpulseJointHandle,
         wake_up_connected_bodies: bool,
     ) -> Option<&mut ImpulseJoint> {
-        let id = self.joint_ids.get(handle.0)?;
+        let id = self.joint_ids.get(&handle.0)?;
         let joint = self.joint_graph.graph.edge_weight_mut(*id);
         if wake_up_connected_bodies {
             if let Some(joint) = &joint {
@@ -297,13 +301,14 @@ impl ImpulseJointSet {
     #[profiling::function]
     pub fn insert(
         &mut self,
+        key_base: u32,
         body1: RigidBodyHandle,
         body2: RigidBodyHandle,
         data: impl Into<GenericJoint>,
         wake_up: bool,
     ) -> ImpulseJointHandle {
         let data = data.into();
-        let handle = self.joint_ids.insert(0.into());
+        let handle = self.joint_ids.insert(key_base, 0.into());
         let joint = ImpulseJoint {
             body1,
             body2,
@@ -313,23 +318,27 @@ impl ImpulseJointSet {
         };
 
         let default_id = InteractionGraph::<(), ()>::invalid_graph_index();
-        let mut graph_index1 = *self
-            .rb_graph_ids
-            .ensure_element_exist(joint.body1.0, default_id);
-        let mut graph_index2 = *self
-            .rb_graph_ids
-            .ensure_element_exist(joint.body2.0, default_id);
+
+        if !self.rb_graph_ids.contains_key(&joint.body1) {
+            self.rb_graph_ids.insert(joint.body1, default_id);
+        }
+        if !self.rb_graph_ids.contains_key(&joint.body2) {
+            self.rb_graph_ids.insert(joint.body2, default_id);
+        }
+
+        let mut graph_index1 = *self.rb_graph_ids.get_mut(&joint.body1).unwrap();
+        let mut graph_index2 = *self.rb_graph_ids.get_mut(&joint.body2).unwrap();
 
         // NOTE: the body won't have a graph index if it does not
         // have any joint attached.
         if !InteractionGraph::<RigidBodyHandle, ImpulseJoint>::is_graph_index_valid(graph_index1) {
             graph_index1 = self.joint_graph.graph.add_node(joint.body1);
-            self.rb_graph_ids.insert(joint.body1.0, graph_index1);
+            self.rb_graph_ids.insert(joint.body1, graph_index1);
         }
 
         if !InteractionGraph::<RigidBodyHandle, ImpulseJoint>::is_graph_index_valid(graph_index2) {
             graph_index2 = self.joint_graph.graph.add_node(joint.body2);
-            self.rb_graph_ids.insert(joint.body2.0, graph_index2);
+            self.rb_graph_ids.insert(joint.body2, graph_index2);
         }
 
         self.joint_ids[handle] = self.joint_graph.add_edge(graph_index1, graph_index2, joint);
@@ -398,7 +407,7 @@ impl ImpulseJointSet {
     /// ```
     #[profiling::function]
     pub fn remove(&mut self, handle: ImpulseJointHandle, wake_up: bool) -> Option<ImpulseJoint> {
-        let id = self.joint_ids.remove(handle.0)?;
+        let id = self.joint_ids.remove(&handle.0)?;
         let endpoints = self.joint_graph.graph.edge_endpoints(id)?;
 
         if wake_up {
@@ -431,10 +440,7 @@ impl ImpulseJointSet {
     ) -> Vec<ImpulseJointHandle> {
         let mut deleted = vec![];
 
-        if let Some(deleted_id) = self
-            .rb_graph_ids
-            .remove(handle.0, InteractionGraph::<(), ()>::invalid_graph_index())
-        {
+        if let Some(deleted_id) = self.rb_graph_ids.remove(&handle) {
             if InteractionGraph::<(), ()>::is_graph_index_valid(deleted_id) {
                 // We have to delete each joint one by one in order to:
                 // - Wake-up the attached bodies.
@@ -447,7 +453,7 @@ impl ImpulseJointSet {
                     .collect();
                 for (h1, h2, to_delete_handle) in to_delete {
                     deleted.push(to_delete_handle);
-                    let to_delete_edge_id = self.joint_ids.remove(to_delete_handle.0).unwrap();
+                    let to_delete_edge_id = self.joint_ids.remove(&to_delete_handle.0).unwrap();
                     self.joint_graph.graph.remove_edge(to_delete_edge_id);
 
                     // Update the id of the edge which took the place of the deleted one.
@@ -463,7 +469,7 @@ impl ImpulseJointSet {
                 if let Some(other) = self.joint_graph.remove_node(deleted_id) {
                     // One rigid-body joint graph index may have been invalidated
                     // so we need to update it.
-                    self.rb_graph_ids.insert(other.0, deleted_id);
+                    self.rb_graph_ids.insert(other, deleted_id);
                 }
             }
         }

@@ -127,7 +127,7 @@ impl CCDSolver {
                         .integrate_forces_and_velocities(dt, &rb.forces, &rb.vels, &rb.mprops);
                     let next_position = predicted_pos * co_parent.pos_wrt_parent;
                     let swept_aabb = co.shape.compute_swept_aabb(&co.pos, &next_position);
-                    broad_phase.set_aabb(params, handle, swept_aabb);
+                    broad_phase.set_aabb(params, colliders, handle, swept_aabb);
                 }
             }
         }
@@ -257,7 +257,7 @@ impl CCDSolver {
                     let rb_next_pos = &bodies[co_parent.handle].pos.next_position;
                     let next_position = rb_next_pos * co_parent.pos_wrt_parent;
                     let swept_aabb = co.shape.compute_swept_aabb(&co.pos, &next_position);
-                    broad_phase.set_aabb(params, handle, swept_aabb);
+                    broad_phase.set_aabb(params, colliders, handle, swept_aabb);
                 }
             }
         }

@@ -110,7 +110,7 @@ impl TypedCompositeShape for QueryPipeline<'_> {
             Option<&Self::PartNormalConstraints>,
         ) -> T,
     ) -> Option<T> {
-        let co_handle = ColliderHandle::from_raw_parts(shape_id);
+        let co_handle = self.colliders.index_to_handle(shape_id);
         let co = self.colliders.get(co_handle)?;
 
         if self.filter.test(self.bodies, co_handle, co) {
@@ -125,7 +125,7 @@ impl TypedCompositeShape for QueryPipeline<'_> {
         shape_id: u32,
         mut f: impl FnMut(Option<&Isometry<Real>>, &dyn Shape, Option<&dyn NormalConstraints>) -> T,
     ) -> Option<T> {
-        let co_handle = ColliderHandle::from_raw_parts(shape_id);
+        let co_handle = self.colliders.index_to_handle(shape_id);
         let co = self.colliders.get(co_handle)?;
 
         if self.filter.test(self.bodies, co_handle, co) {
@@ -174,7 +174,7 @@ impl BroadPhaseBvh {
 
 impl<'a> QueryPipeline<'a> {
     fn id_to_handle<T>(&self, (id, data): (u32, T)) -> Option<(ColliderHandle, T)> {
-        let co_handle = ColliderHandle::from_raw_parts(id);
+        let co_handle = self.colliders.index_to_handle(id);
         self.colliders.get(co_handle).map(|_| (co_handle, data))
     }
 
@@ -302,7 +302,7 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().intersects_local_ray(&ray, max_toi))
             .filter_map(move |leaf| {
-                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co_handle = self.colliders.index_to_handle(leaf);
                 let co = self.colliders.get(co_handle)?;
                 if self.filter.test(self.bodies, co_handle, co) {
                     if let Some(intersection) =
@@ -391,7 +391,7 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().contains_local_point(&point))
             .filter_map(move |leaf| {
-                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co_handle = self.colliders.index_to_handle(leaf);
                 let co = self.colliders.get(co_handle)?;
                 if self.filter.test(self.bodies, co_handle, co)
                     && co.shape.contains_point(co.position(), &point)
@@ -415,7 +415,7 @@ impl<'a> QueryPipeline<'a> {
         point: &Point<Real>,
     ) -> Option<(ColliderHandle, PointProjection, FeatureId)> {
         let (id, (proj, feat)) = CompositeShapeRef(self).project_local_point_and_get_feature(point);
-        let handle = ColliderHandle::from_raw_parts(id);
+        let handle = self.colliders.index_to_handle(id);
         Some((handle, proj, feat))
     }
 
@@ -432,7 +432,7 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().intersects(&aabb))
             .filter_map(move |leaf| {
-                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co_handle = self.colliders.index_to_handle(leaf);
                 let co = self.colliders.get(co_handle)?;
                 // NOTE: do **not** recompute and check the latest collider AABB.
                 //       Checking only against the one in the BVH is useful, e.g., for conservative
@@ -552,7 +552,7 @@ impl<'a> QueryPipeline<'a> {
         self.bvh
             .leaves(move |node: &BvhNode| node.aabb().intersects(&shape_aabb))
             .filter_map(move |leaf| {
-                let co_handle = ColliderHandle::from_raw_parts(leaf);
+                let co_handle = self.colliders.index_to_handle(leaf);
                 let co = self.colliders.get(co_handle)?;
                 if self.filter.test(self.bodies, co_handle, co) {
                     let pos12 = shape_pos.inv_mul(co.position());

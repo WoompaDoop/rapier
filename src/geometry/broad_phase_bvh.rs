@@ -99,7 +99,8 @@ impl BroadPhaseBvh {
         // Removals must be handled first, in case another collider in
         // `modified_colliders` shares the same index.
         for handle in removed_colliders {
-            self.tree.remove(handle.into_raw_parts());
+            self.tree
+                .remove(colliders.colliders.key_to_index(&handle.0));
         }
 
         // if modified_colliders.is_empty() {
@@ -125,7 +126,7 @@ impl BroadPhaseBvh {
 
                 self.tree.insert_or_update_partially(
                     aabb,
-                    modified.into_raw_parts(),
+                    colliders.colliders.key_to_index(&modified.0),
                     change_detection_skin,
                 );
             }
@@ -178,8 +179,8 @@ impl BroadPhaseBvh {
 
         let mut pairs_collector = |co1: u32, co2: u32| {
             assert_ne!(co1, co2);
-            let mut handle1 = ColliderHandle::from_raw_parts(co1);
-            let mut handle2 = ColliderHandle::from_raw_parts(co2);
+            let mut handle1 = colliders.index_to_handle(co1);
+            let mut handle2 = colliders.index_to_handle(co1);
 
             let Some(_) = colliders.get(handle1) else {
                 return;
@@ -223,15 +224,15 @@ impl BroadPhaseBvh {
         // let t0 = std::time::Instant::now();
         self.pairs.retain(|(h0, h1), timestamp| {
             if *timestamp != self.frame_index {
-                if !colliders.contains(*h0) || !colliders.contains(*h1) {
+                if !colliders.contains(h0) || !colliders.contains(h1) {
                     // At least one of the colliders no longer exist, don’t retain the pair.
                     return false;
                 }
 
-                let Some(node0) = self.tree.leaf_node(h0.into_raw_parts()) else {
+                let Some(node0) = self.tree.leaf_node(colliders.handle_to_index(h0)) else {
                     return false;
                 };
-                let Some(node1) = self.tree.leaf_node(h1.into_raw_parts()) else {
+                let Some(node1) = self.tree.leaf_node(colliders.handle_to_index(h1)) else {
                     return false;
                 };
 
@@ -265,7 +266,13 @@ impl BroadPhaseBvh {
     ///
     /// The AABB change will be immediately applied and propagated through the underlying BVH.
     /// Change detection will automatically take it into account during the next broad-phase update.
-    pub fn set_aabb(&mut self, params: &IntegrationParameters, handle: ColliderHandle, aabb: Aabb) {
+    pub fn set_aabb(
+        &mut self,
+        params: &IntegrationParameters,
+        colliders: &ColliderSet,
+        handle: ColliderHandle,
+        aabb: Aabb,
+    ) {
         let change_detection_skin = if Self::CHANGE_DETECTION_ENABLED {
             Self::CHANGE_DETECTION_FACTOR * params.length_unit
         } else {
@@ -273,7 +280,7 @@ impl BroadPhaseBvh {
         };
         self.tree.insert_with_change_detection(
             aabb,
-            handle.into_raw_parts(),
+            colliders.handle_to_index(&handle),
             change_detection_skin,
         );
     }

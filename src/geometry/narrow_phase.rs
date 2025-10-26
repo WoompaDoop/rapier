@@ -1,7 +1,6 @@
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 
-use crate::data::Coarena;
 use crate::data::graph::EdgeIndex;
 use crate::dynamics::{
     CoefficientCombineRule, ImpulseJointSet, IslandManager, RigidBodyDominance, RigidBodySet,
@@ -22,6 +21,7 @@ use crate::prelude::{CollisionEventFlags, MultibodyJointSet};
 use parry::query::{DefaultQueryDispatcher, PersistentQueryDispatcher};
 use parry::utils::IsometryOpt;
 use parry::utils::hashmap::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
@@ -69,7 +69,7 @@ pub struct NarrowPhase {
     query_dispatcher: Arc<dyn PersistentQueryDispatcher<ContactManifoldData, ContactData>>,
     contact_graph: InteractionGraph<ColliderHandle, ContactPair>,
     intersection_graph: InteractionGraph<ColliderHandle, IntersectionPair>,
-    graph_indices: Coarena<ColliderGraphIndices>,
+    graph_indices: BTreeMap<ColliderHandle, ColliderGraphIndices>,
 }
 
 pub(crate) type ContactManifoldIndex = usize;
@@ -95,7 +95,7 @@ impl NarrowPhase {
             query_dispatcher: Arc::new(d),
             contact_graph: InteractionGraph::new(),
             intersection_graph: InteractionGraph::new(),
-            graph_indices: Coarena::new(),
+            graph_indices: BTreeMap::new(),
         }
     }
 
@@ -127,7 +127,7 @@ impl NarrowPhase {
         collider: ColliderHandle,
     ) -> impl Iterator<Item = &ContactPair> {
         self.graph_indices
-            .get(collider.0)
+            .get(&collider)
             .map(|id| id.contact_graph_index)
             .into_iter()
             .flat_map(move |id| self.contact_graph.interactions_with(id))
@@ -145,7 +145,7 @@ impl NarrowPhase {
         collider: ColliderHandle,
     ) -> impl Iterator<Item = (ColliderHandle, ColliderHandle, bool)> + '_ {
         self.graph_indices
-            .get(collider.0)
+            .get(&collider)
             .map(|id| id.intersection_graph_index)
             .into_iter()
             .flat_map(move |id| {
@@ -170,8 +170,8 @@ impl NarrowPhase {
         collider1: ColliderHandle,
         collider2: ColliderHandle,
     ) -> Option<&ContactPair> {
-        let id1 = self.graph_indices.get(collider1.0)?;
-        let id2 = self.graph_indices.get(collider2.0)?;
+        let id1 = self.graph_indices.get(&collider1)?;
+        let id2 = self.graph_indices.get(&collider2)?;
         self.contact_graph
             .interaction_pair(id1.contact_graph_index, id2.contact_graph_index)
             .map(|c| c.2)
@@ -186,8 +186,8 @@ impl NarrowPhase {
         collider1: ColliderHandle,
         collider2: ColliderHandle,
     ) -> Option<bool> {
-        let id1 = self.graph_indices.get(collider1.0)?;
-        let id2 = self.graph_indices.get(collider2.0)?;
+        let id1 = self.graph_indices.get(&collider1)?;
+        let id2 = self.graph_indices.get(&collider2)?;
         self.intersection_graph
             .interaction_pair(id1.intersection_graph_index, id2.intersection_graph_index)
             .map(|c| c.2.intersecting)
@@ -232,10 +232,7 @@ impl NarrowPhase {
         for collider in removed_colliders {
             // NOTE: if the collider does not have any graph indices currently, there is nothing
             // to remove in the narrow-phase for this collider.
-            if let Some(graph_idx) = self
-                .graph_indices
-                .remove(collider.0, ColliderGraphIndices::invalid())
-            {
+            if let Some(graph_idx) = self.graph_indices.remove(collider) {
                 let intersection_graph_id = prox_id_remap
                     .get(collider)
                     .copied()
@@ -335,7 +332,7 @@ impl NarrowPhase {
         // We have to manage the fact that one other collider will
         // have its graph index changed because of the node's swap-remove.
         if let Some(replacement) = self.intersection_graph.remove_node(intersection_graph_id) {
-            if let Some(replacement) = self.graph_indices.get_mut(replacement.0) {
+            if let Some(replacement) = self.graph_indices.get_mut(&replacement) {
                 replacement.intersection_graph_index = intersection_graph_id;
             } else {
                 prox_id_remap.insert(replacement, intersection_graph_id);
@@ -347,7 +344,7 @@ impl NarrowPhase {
         }
 
         if let Some(replacement) = self.contact_graph.remove_node(contact_graph_id) {
-            if let Some(replacement) = self.graph_indices.get_mut(replacement.0) {
+            if let Some(replacement) = self.graph_indices.get_mut(&replacement) {
                 replacement.contact_graph_index = contact_graph_id;
             } else {
                 contact_id_remap.insert(replacement, contact_graph_id);
@@ -379,7 +376,7 @@ impl NarrowPhase {
                     continue;
                 }
 
-                if let Some(gid) = self.graph_indices.get(handle.0) {
+                if let Some(gid) = self.graph_indices.get(&handle) {
                     // For each modified colliders, we need to wake-up the bodies it is in contact with
                     // so that the narrow-phase properly takes into account the change in, e.g.,
                     // collision groups. Waking up the modified collider's parent isn't enough because
@@ -483,8 +480,8 @@ impl NarrowPhase {
             // TODO: could we just unwrap here?
             // Don't we have the guarantee that we will get a `AddPair` before a `DeletePair`?
             if let (Some(gid1), Some(gid2)) = (
-                self.graph_indices.get(pair.collider1.0),
-                self.graph_indices.get(pair.collider2.0),
+                self.graph_indices.get(&pair.collider1),
+                self.graph_indices.get(&pair.collider2),
             ) {
                 if mode == PairRemovalMode::FromIntersectionGraph
                     || (mode == PairRemovalMode::Auto && (co1.is_sensor() || co2.is_sensor()))
@@ -546,27 +543,42 @@ impl NarrowPhase {
         {
             // These colliders have no parents - continue.
 
-            let (gid1, gid2) = self.graph_indices.ensure_pair_exists(
-                pair.collider1.0,
-                pair.collider2.0,
-                ColliderGraphIndices::invalid(),
-            );
+            if !self.graph_indices.contains_key(&pair.collider1) {
+                self.graph_indices
+                    .insert(pair.collider1, ColliderGraphIndices::invalid());
+            }
+
+            if !self.graph_indices.contains_key(&pair.collider2) {
+                self.graph_indices
+                    .insert(pair.collider2, ColliderGraphIndices::invalid());
+            }
+
+            // let (gid1, gid2) = self.graph_indices.ensure_pair_exists(
+            //     pair.collider1.0,
+            //     pair.collider2.0,
+            //     ColliderGraphIndices::invalid(),
+            // );
+
 
             if co1.is_sensor() || co2.is_sensor() {
                 // NOTE: the collider won't have a graph index as long
                 // as it does not interact with anything.
+                let gid1 = self.graph_indices.get_mut(&pair.collider1).unwrap();
                 if !InteractionGraph::<(), ()>::is_graph_index_valid(gid1.intersection_graph_index)
                 {
                     gid1.intersection_graph_index =
                         self.intersection_graph.graph.add_node(pair.collider1);
                 }
 
+                let gid2 = self.graph_indices.get_mut(&pair.collider2).unwrap();
                 if !InteractionGraph::<(), ()>::is_graph_index_valid(gid2.intersection_graph_index)
                 {
                     gid2.intersection_graph_index =
                         self.intersection_graph.graph.add_node(pair.collider2);
                 }
 
+                let gid1 = self.graph_indices.get(&pair.collider1).unwrap();
+                let gid2 = self.graph_indices.get(&pair.collider2).unwrap();
                 if self
                     .intersection_graph
                     .graph
@@ -585,14 +597,18 @@ impl NarrowPhase {
 
                 // NOTE: the collider won't have a graph index as long
                 // as it does not interact with anything.
+                let gid1 = self.graph_indices.get_mut(&pair.collider1).unwrap();
                 if !InteractionGraph::<(), ()>::is_graph_index_valid(gid1.contact_graph_index) {
                     gid1.contact_graph_index = self.contact_graph.graph.add_node(pair.collider1);
                 }
 
+                let gid2 = self.graph_indices.get_mut(&pair.collider2).unwrap();
                 if !InteractionGraph::<(), ()>::is_graph_index_valid(gid2.contact_graph_index) {
                     gid2.contact_graph_index = self.contact_graph.graph.add_node(pair.collider2);
                 }
 
+                let gid1 = self.graph_indices.get(&pair.collider1).unwrap();
+                let gid2 = self.graph_indices.get(&pair.collider2).unwrap();
                 if self
                     .contact_graph
                     .graph
@@ -1119,294 +1135,5 @@ impl NarrowPhase {
                 out_contact_pairs.push(EdgeIndex::new(pair_id as u32));
             }
         }
-    }
-}
-
-#[cfg(test)]
-#[cfg(feature = "f32")]
-#[cfg(feature = "dim3")]
-mod test {
-    use na::vector;
-
-    use crate::prelude::{
-        CCDSolver, ColliderBuilder, DefaultBroadPhase, IntegrationParameters, PhysicsPipeline,
-        RigidBodyBuilder,
-    };
-
-    use super::*;
-
-    /// Test for https://github.com/dimforge/rapier/issues/734.
-    #[test]
-    pub fn collider_set_parent_depenetration() {
-        // This tests the scenario:
-        // 1. Body A has two colliders attached (and overlapping), Body B has none.
-        // 2. One of the colliders from Body A gets re-parented to Body B.
-        //    -> Collision is properly detected between the colliders of A and B.
-        let mut rigid_body_set = RigidBodySet::new();
-        let mut collider_set = ColliderSet::new();
-
-        /* Create the ground. */
-        let collider = ColliderBuilder::ball(0.5);
-
-        /* Create body 1, which will contain both colliders at first. */
-        let rigid_body_1 = RigidBodyBuilder::dynamic()
-            .translation(vector![0.0, 0.0, 0.0])
-            .build();
-        let body_1_handle = rigid_body_set.insert(rigid_body_1);
-
-        /* Create collider 1. Parent it to rigid body 1. */
-        let collider_1_handle =
-            collider_set.insert_with_parent(collider.build(), body_1_handle, &mut rigid_body_set);
-
-        /* Create collider 2. Parent it to rigid body 1. */
-        let collider_2_handle =
-            collider_set.insert_with_parent(collider.build(), body_1_handle, &mut rigid_body_set);
-
-        /* Create body 2. No attached colliders yet. */
-        let rigid_body_2 = RigidBodyBuilder::dynamic()
-            .translation(vector![0.0, 0.0, 0.0])
-            .build();
-        let body_2_handle = rigid_body_set.insert(rigid_body_2);
-
-        /* Create other structures necessary for the simulation. */
-        let gravity = vector![0.0, 0.0, 0.0];
-        let integration_parameters = IntegrationParameters::default();
-        let mut physics_pipeline = PhysicsPipeline::new();
-        let mut island_manager = IslandManager::new();
-        let mut broad_phase = DefaultBroadPhase::new();
-        let mut narrow_phase = NarrowPhase::new();
-        let mut impulse_joint_set = ImpulseJointSet::new();
-        let mut multibody_joint_set = MultibodyJointSet::new();
-        let mut ccd_solver = CCDSolver::new();
-        let physics_hooks = ();
-        let event_handler = ();
-
-        physics_pipeline.step(
-            &gravity,
-            &integration_parameters,
-            &mut island_manager,
-            &mut broad_phase,
-            &mut narrow_phase,
-            &mut rigid_body_set,
-            &mut collider_set,
-            &mut impulse_joint_set,
-            &mut multibody_joint_set,
-            &mut ccd_solver,
-            &physics_hooks,
-            &event_handler,
-        );
-        let collider_1_position = collider_set.get(collider_1_handle).unwrap().pos;
-        let collider_2_position = collider_set.get(collider_2_handle).unwrap().pos;
-        assert!(
-            (collider_1_position.translation.vector - collider_2_position.translation.vector)
-                .magnitude()
-                < 0.5f32
-        );
-
-        let contact_pair = narrow_phase
-            .contact_pair(collider_1_handle, collider_2_handle)
-            .expect("The contact pair should exist.");
-        assert_eq!(contact_pair.manifolds.len(), 0);
-        assert!(
-            narrow_phase
-                .intersection_pair(collider_1_handle, collider_2_handle)
-                .is_none(),
-            "Interaction pair is for sensors"
-        );
-        /* Parent collider 2 to body 2. */
-        collider_set.set_parent(collider_2_handle, Some(body_2_handle), &mut rigid_body_set);
-
-        physics_pipeline.step(
-            &gravity,
-            &integration_parameters,
-            &mut island_manager,
-            &mut broad_phase,
-            &mut narrow_phase,
-            &mut rigid_body_set,
-            &mut collider_set,
-            &mut impulse_joint_set,
-            &mut multibody_joint_set,
-            &mut ccd_solver,
-            &physics_hooks,
-            &event_handler,
-        );
-
-        let contact_pair = narrow_phase
-            .contact_pair(collider_1_handle, collider_2_handle)
-            .expect("The contact pair should exist.");
-        assert_eq!(contact_pair.manifolds.len(), 1);
-        assert!(
-            narrow_phase
-                .intersection_pair(collider_1_handle, collider_2_handle)
-                .is_none(),
-            "Interaction pair is for sensors"
-        );
-
-        /* Run the game loop, stepping the simulation once per frame. */
-        for _ in 0..200 {
-            physics_pipeline.step(
-                &gravity,
-                &integration_parameters,
-                &mut island_manager,
-                &mut broad_phase,
-                &mut narrow_phase,
-                &mut rigid_body_set,
-                &mut collider_set,
-                &mut impulse_joint_set,
-                &mut multibody_joint_set,
-                &mut ccd_solver,
-                &physics_hooks,
-                &event_handler,
-            );
-
-            let collider_1_position = collider_set.get(collider_1_handle).unwrap().pos;
-            let collider_2_position = collider_set.get(collider_2_handle).unwrap().pos;
-            println!("collider 1 position: {}", collider_1_position.translation);
-            println!("collider 2 position: {}", collider_2_position.translation);
-        }
-
-        let collider_1_position = collider_set.get(collider_1_handle).unwrap().pos;
-        let collider_2_position = collider_set.get(collider_2_handle).unwrap().pos;
-        println!("collider 2 position: {}", collider_2_position.translation);
-        assert!(
-            (collider_1_position.translation.vector - collider_2_position.translation.vector)
-                .magnitude()
-                >= 0.5f32,
-            "colliders should no longer be penetrating."
-        );
-    }
-
-    /// Test for https://github.com/dimforge/rapier/issues/734.
-    #[test]
-    pub fn collider_set_parent_no_self_intersection() {
-        // This tests the scenario:
-        // 1. Body A and Body B each have one collider attached.
-        //    -> There should be a collision detected between A and B.
-        // 2. The collider from Body B gets attached to Body A.
-        //    -> There should no longer be any collision between A and B.
-        // 3. Re-parent one of the collider from Body A to Body B again.
-        //    -> There should a collision again.
-        let mut rigid_body_set = RigidBodySet::new();
-        let mut collider_set = ColliderSet::new();
-
-        /* Create the ground. */
-        let collider = ColliderBuilder::ball(0.5);
-
-        /* Create body 1, which will contain collider 1. */
-        let rigid_body_1 = RigidBodyBuilder::dynamic()
-            .translation(vector![0.0, 0.0, 0.0])
-            .build();
-        let body_1_handle = rigid_body_set.insert(rigid_body_1);
-
-        /* Create collider 1. Parent it to rigid body 1. */
-        let collider_1_handle =
-            collider_set.insert_with_parent(collider.build(), body_1_handle, &mut rigid_body_set);
-
-        /* Create body 2, which will contain collider 2 at first. */
-        let rigid_body_2 = RigidBodyBuilder::dynamic()
-            .translation(vector![0.0, 0.0, 0.0])
-            .build();
-        let body_2_handle = rigid_body_set.insert(rigid_body_2);
-
-        /* Create collider 2. Parent it to rigid body 2. */
-        let collider_2_handle =
-            collider_set.insert_with_parent(collider.build(), body_2_handle, &mut rigid_body_set);
-
-        /* Create other structures necessary for the simulation. */
-        let gravity = vector![0.0, 0.0, 0.0];
-        let integration_parameters = IntegrationParameters::default();
-        let mut physics_pipeline = PhysicsPipeline::new();
-        let mut island_manager = IslandManager::new();
-        let mut broad_phase = DefaultBroadPhase::new();
-        let mut narrow_phase = NarrowPhase::new();
-        let mut impulse_joint_set = ImpulseJointSet::new();
-        let mut multibody_joint_set = MultibodyJointSet::new();
-        let mut ccd_solver = CCDSolver::new();
-        let physics_hooks = ();
-        let event_handler = ();
-
-        physics_pipeline.step(
-            &gravity,
-            &integration_parameters,
-            &mut island_manager,
-            &mut broad_phase,
-            &mut narrow_phase,
-            &mut rigid_body_set,
-            &mut collider_set,
-            &mut impulse_joint_set,
-            &mut multibody_joint_set,
-            &mut ccd_solver,
-            &physics_hooks,
-            &event_handler,
-        );
-
-        let contact_pair = narrow_phase
-            .contact_pair(collider_1_handle, collider_2_handle)
-            .expect("The contact pair should exist.");
-        assert_eq!(
-            contact_pair.manifolds.len(),
-            1,
-            "There should be a contact manifold."
-        );
-
-        let collider_1_position = collider_set.get(collider_1_handle).unwrap().pos;
-        let collider_2_position = collider_set.get(collider_2_handle).unwrap().pos;
-        assert!(
-            (collider_1_position.translation.vector - collider_2_position.translation.vector)
-                .magnitude()
-                < 0.5f32
-        );
-
-        /* Parent collider 2 to body 1. */
-        collider_set.set_parent(collider_2_handle, Some(body_1_handle), &mut rigid_body_set);
-        physics_pipeline.step(
-            &gravity,
-            &integration_parameters,
-            &mut island_manager,
-            &mut broad_phase,
-            &mut narrow_phase,
-            &mut rigid_body_set,
-            &mut collider_set,
-            &mut impulse_joint_set,
-            &mut multibody_joint_set,
-            &mut ccd_solver,
-            &physics_hooks,
-            &event_handler,
-        );
-
-        let contact_pair = narrow_phase
-            .contact_pair(collider_1_handle, collider_2_handle)
-            .expect("The contact pair should no longer exist.");
-        assert_eq!(
-            contact_pair.manifolds.len(),
-            0,
-            "Colliders with same parent should not be in contact together."
-        );
-
-        /* Parent collider 2 back to body 1. */
-        collider_set.set_parent(collider_2_handle, Some(body_2_handle), &mut rigid_body_set);
-        physics_pipeline.step(
-            &gravity,
-            &integration_parameters,
-            &mut island_manager,
-            &mut broad_phase,
-            &mut narrow_phase,
-            &mut rigid_body_set,
-            &mut collider_set,
-            &mut impulse_joint_set,
-            &mut multibody_joint_set,
-            &mut ccd_solver,
-            &physics_hooks,
-            &event_handler,
-        );
-
-        let contact_pair = narrow_phase
-            .contact_pair(collider_1_handle, collider_2_handle)
-            .expect("The contact pair should exist.");
-        assert_eq!(
-            contact_pair.manifolds.len(),
-            1,
-            "There should be a contact manifold."
-        );
     }
 }

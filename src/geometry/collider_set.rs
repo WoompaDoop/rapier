@@ -1,5 +1,7 @@
-use crate::data::arena::Arena;
-use crate::data::{HasModifiedFlag, ModifiedObjects};
+use parry::utils::hashmap::HashMap;
+
+use crate::data::cool_map::CoolMap;
+use crate::data::{Arena, CoolKey, HasModifiedFlag, ModifiedObjects};
 use crate::dynamics::{IslandManager, RigidBodyHandle, RigidBodySet};
 use crate::geometry::{Collider, ColliderChanges, ColliderHandle, ColliderParent};
 use crate::math::Isometry;
@@ -16,6 +18,98 @@ impl HasModifiedFlag for Collider {
     #[inline]
     fn set_modified_flag(&mut self) {
         self.changes |= ColliderChanges::MODIFIED;
+    }
+}
+
+// Keeps data for turning the 8 byte keys I use into 4 byte user data by the Bvh tree in parry
+#[derive(Clone, Default, Debug)]
+#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
+pub struct GrumboMap {
+    pub small_accessors: Arena<CoolKey>,
+    pub accessor_map: HashMap<CoolKey, u32>,
+    pub colliders: CoolMap<Collider>,
+}
+
+impl GrumboMap {
+    pub fn iter(&self) -> impl Iterator<Item = (&CoolKey, &Collider)> {
+        self.colliders.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (&CoolKey, &mut Collider)> {
+        self.colliders.iter_mut()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &Collider> {
+        self.colliders.values()
+    }
+
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut Collider> {
+        self.colliders.values_mut()
+    }
+
+    /// Returns how many colliders are currently in this collection.
+    pub fn len(&self) -> usize {
+        self.colliders.len()
+    }
+
+    /// Returns `true` if there are no colliders in this collection.
+    pub fn is_empty(&self) -> bool {
+        self.colliders.is_empty()
+    }
+
+    /// Checks if the given handle points to a valid collider that still exists.
+    pub fn contains_key(&self, key: &CoolKey) -> bool {
+        self.colliders.contains_key(key)
+    }
+
+    pub fn insert(&mut self, key_base: u32, value: Collider) -> CoolKey {
+        let key = self.colliders.insert(key_base, value);
+        let index = self.small_accessors.insert(key);
+        self.accessor_map.insert(key, index.into_raw());
+        key
+    }
+
+    pub fn remove(&mut self, k: &CoolKey) -> Option<Collider> {
+        let Some(collider) = self.colliders.remove(k) else {
+            return None;
+        };
+
+        let index = crate::data::arena::Index::from_raw(self.accessor_map.remove(k).unwrap());
+
+        self.small_accessors.remove(index);
+
+        Some(collider)
+    }
+
+    pub fn get(&self, k: &CoolKey) -> Option<&Collider> {
+        self.colliders.get(k)
+    }
+
+    pub fn get_mut(&mut self, k: &CoolKey) -> Option<&mut Collider> {
+        self.colliders.get_mut(k)
+    }
+
+    pub fn key_to_index(&self, k: &CoolKey) -> u32 {
+        self.accessor_map[k]
+    }
+
+    pub fn index_to_key(&self, index: u32) -> CoolKey {
+        let index = crate::data::arena::Index::from_raw(index);
+        self.small_accessors[index]
+    }
+}
+
+impl Index<CoolKey> for GrumboMap {
+    type Output = Collider;
+
+    fn index(&self, key: CoolKey) -> &Collider {
+        &self.colliders[key]
+    }
+}
+
+impl IndexMut<CoolKey> for GrumboMap {
+    fn index_mut(&mut self, key: CoolKey) -> &mut Collider {
+        self.colliders.get_mut(&key).unwrap()
     }
 }
 
@@ -45,7 +139,7 @@ impl HasModifiedFlag for Collider {
 /// );
 /// ```
 pub struct ColliderSet {
-    pub(crate) colliders: Arena<Collider>,
+    pub(crate) colliders: GrumboMap,
     pub(crate) modified_colliders: ModifiedColliders,
     pub(crate) removed_colliders: Vec<ColliderHandle>,
 }
@@ -54,21 +148,18 @@ impl ColliderSet {
     /// Creates a new empty collection of colliders.
     pub fn new() -> Self {
         ColliderSet {
-            colliders: Arena::new(),
+            colliders: GrumboMap::default(),
             modified_colliders: Default::default(),
             removed_colliders: Vec::new(),
         }
     }
 
-    /// Creates a new collection with pre-allocated space for the given number of colliders.
-    ///
-    /// Use this if you know approximately how many colliders you'll need.
-    pub fn with_capacity(capacity: usize) -> Self {
-        ColliderSet {
-            colliders: Arena::with_capacity(capacity),
-            modified_colliders: ModifiedColliders::with_capacity(capacity),
-            removed_colliders: Vec::new(),
-        }
+    pub fn index_to_handle(&self, index: u32) -> ColliderHandle {
+        ColliderHandle(self.colliders.index_to_key(index))
+    }
+
+    pub fn handle_to_index(&self, handle: &ColliderHandle) -> u32 {
+        self.colliders.key_to_index(&handle.0)
     }
 
     pub(crate) fn take_modified(&mut self) -> ModifiedColliders {
@@ -87,14 +178,14 @@ impl ColliderSet {
     ///
     /// Useful as a sentinel/placeholder value.
     pub fn invalid_handle() -> ColliderHandle {
-        ColliderHandle::from_raw_parts(crate::INVALID_U32)
+        ColliderHandle::from_raw_parts(crate::INVALID_U32, crate::INVALID_U32)
     }
 
     /// Iterates over all colliders in this collection.
     ///
     /// Yields `(handle, &Collider)` pairs for each collider (including disabled ones).
-    pub fn iter(&self) -> impl ExactSizeIterator<Item = (ColliderHandle, &Collider)> {
-        self.colliders.iter().map(|(h, c)| (ColliderHandle(h), c))
+    pub fn iter(&self) -> impl Iterator<Item = (ColliderHandle, &Collider)> {
+        self.colliders.iter().map(|(h, c)| (ColliderHandle(*h), c))
     }
 
     /// Iterates over only the enabled colliders.
@@ -103,7 +194,7 @@ impl ColliderSet {
     pub fn iter_enabled(&self) -> impl Iterator<Item = (ColliderHandle, &Collider)> {
         self.colliders
             .iter()
-            .map(|(h, c)| (ColliderHandle(h), c))
+            .map(|(h, c)| (ColliderHandle(*h), c))
             .filter(|(_, c)| c.is_enabled())
     }
 
@@ -115,8 +206,8 @@ impl ColliderSet {
         self.colliders.iter_mut().map(move |(h, co)| {
             // NOTE: we push unchecked here since we are just re-populating the
             //       `modified_colliders` set that we just cleared before iteration.
-            modified_colliders.push_unchecked(ColliderHandle(h), co);
-            (ColliderHandle(h), co)
+            modified_colliders.push_unchecked(ColliderHandle(*h), co);
+            (ColliderHandle(*h), co)
         })
     }
 
@@ -137,21 +228,21 @@ impl ColliderSet {
     }
 
     /// Checks if the given handle points to a valid collider that still exists.
-    pub fn contains(&self, handle: ColliderHandle) -> bool {
-        self.colliders.contains(handle.0)
+    pub fn contains(&self, handle: &ColliderHandle) -> bool {
+        self.colliders.contains_key(&handle.0)
     }
 
     /// Adds a standalone collider (not attached to any body) and returns its handle.
     ///
     /// Most colliders should be attached to rigid bodies using [`insert_with_parent()`](Self::insert_with_parent) instead.
     /// Standalone colliders are useful for sensors or static collision geometry that doesn't need a body.
-    pub fn insert(&mut self, coll: impl Into<Collider>) -> ColliderHandle {
+    pub fn insert(&mut self, key_base: u32, coll: impl Into<Collider>) -> ColliderHandle {
         let mut coll = coll.into();
         // Make sure the internal links are reset, they may not be
         // if this rigid-body was obtained by cloning another one.
         coll.reset_internal_references();
         coll.parent = None;
-        let handle = ColliderHandle(self.colliders.insert(coll));
+        let handle = ColliderHandle(self.colliders.insert(key_base, coll));
         // NOTE: we push unchecked because this is a brand-new collider
         //       so it was initialized with the changed flag but isn’t in
         //       the set yet.
@@ -180,6 +271,7 @@ impl ColliderSet {
     /// ```
     pub fn insert_with_parent(
         &mut self,
+        key_base: u32,
         coll: impl Into<Collider>,
         parent_handle: RigidBodyHandle,
         bodies: &mut RigidBodySet,
@@ -203,8 +295,8 @@ impl ColliderSet {
         let parent = bodies
             .get_mut_internal_with_modification_tracking(parent_handle)
             .expect("Parent rigid body not found.");
-        let handle = ColliderHandle(self.colliders.insert(coll));
-        let coll = self.colliders.get_mut(handle.0).unwrap();
+        let handle = ColliderHandle(self.colliders.insert(key_base, coll));
+        let coll = self.colliders.get_mut(&handle.0).unwrap();
         // NOTE: we push unchecked because this is a brand-new collider
         //       so it was initialized with the changed flag but isn’t in
         //       the set yet.
@@ -320,7 +412,7 @@ impl ColliderSet {
         bodies: &mut RigidBodySet,
         wake_up: bool,
     ) -> Option<Collider> {
-        let collider = self.colliders.remove(handle.0)?;
+        let collider = self.colliders.remove(&handle.0)?;
 
         /*
          * Delete the collider from its parent body.
@@ -351,7 +443,7 @@ impl ColliderSet {
     ///
     /// Returns `None` if the handle is invalid or the collider was removed.
     pub fn get(&self, handle: ColliderHandle) -> Option<&Collider> {
-        self.colliders.get(handle.0)
+        self.colliders.get(&handle.0)
     }
 
     /// Gets a mutable reference to the collider with the given handle.
@@ -360,33 +452,9 @@ impl ColliderSet {
     /// Use this to modify collider properties like friction, restitution, sensor status, etc.
     #[cfg(not(feature = "dev-remove-slow-accessors"))]
     pub fn get_mut(&mut self, handle: ColliderHandle) -> Option<&mut Collider> {
-        let result = self.colliders.get_mut(handle.0)?;
+        let result = self.colliders.get_mut(&handle.0)?;
         self.modified_colliders.push_once(handle, result);
         Some(result)
-    }
-
-    /// Gets mutable references to two different colliders at once.
-    ///
-    /// Useful when you need to modify two colliders simultaneously. If both handles
-    /// are the same, only the first value will be `Some`.
-    #[cfg(not(feature = "dev-remove-slow-accessors"))]
-    pub fn get_pair_mut(
-        &mut self,
-        handle1: ColliderHandle,
-        handle2: ColliderHandle,
-    ) -> (Option<&mut Collider>, Option<&mut Collider>) {
-        if handle1 == handle2 {
-            (self.get_mut(handle1), None)
-        } else {
-            let (mut co1, mut co2) = self.colliders.get2_mut(handle1.0, handle2.0);
-            if let Some(co1) = co1.as_deref_mut() {
-                self.modified_colliders.push_once(handle1, co1);
-            }
-            if let Some(co2) = co2.as_deref_mut() {
-                self.modified_colliders.push_once(handle2, co2);
-            }
-            (co1, co2)
-        }
     }
 
     pub(crate) fn index_mut_internal(&mut self, handle: ColliderHandle) -> &mut Collider {
@@ -394,7 +462,7 @@ impl ColliderSet {
     }
 
     pub(crate) fn get_mut_internal(&mut self, handle: ColliderHandle) -> Option<&mut Collider> {
-        self.colliders.get_mut(handle.0)
+        self.colliders.get_mut(&handle.0)
     }
 
     // Just a very long name instead of `.get_mut` to make sure
@@ -404,16 +472,16 @@ impl ColliderSet {
         &mut self,
         handle: ColliderHandle,
     ) -> Option<&mut Collider> {
-        let result = self.colliders.get_mut(handle.0)?;
+        let result = self.colliders.get_mut(&handle.0)?;
         self.modified_colliders.push_once(handle, result);
         Some(result)
     }
 }
 
-impl Index<crate::data::Index> for ColliderSet {
+impl Index<crate::data::CoolKey> for ColliderSet {
     type Output = Collider;
 
-    fn index(&self, index: crate::data::Index) -> &Collider {
+    fn index(&self, index: crate::data::CoolKey) -> &Collider {
         &self.colliders[index]
     }
 }

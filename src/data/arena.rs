@@ -51,7 +51,7 @@ pub struct Index {
 
 impl Default for Index {
     fn default() -> Self {
-        Self::from_raw_parts(crate::INVALID_U32)
+        Self::from_raw(crate::INVALID_U32)
     }
 }
 
@@ -63,7 +63,7 @@ impl Index {
     ///
     /// Providing arbitrary values will lead to malformed indices and ultimately
     /// panics.
-    pub fn from_raw_parts(index: u32) -> Index {
+    pub fn from_raw(index: u32) -> Index {
         Index { index }
     }
 
@@ -74,7 +74,7 @@ impl Index {
     /// `Index` like `pub struct MyIdentifier(Index);`.  However, for external
     /// types whose definition you can't customize, but which you can construct
     /// instances of, this method can be useful.
-    pub fn into_raw_parts(self) -> u32 {
+    pub fn into_raw(self) -> u32 {
         self.index
     }
 }
@@ -191,9 +191,7 @@ impl<T> Arena<T> {
         match self.try_alloc_next_index() {
             None => Err(value),
             Some(index) => {
-                self.items[index.index as usize] = Entry::Occupied {
-                    value,
-                };
+                self.items[index.index as usize] = Entry::Occupied { value };
                 Ok(index)
             }
         }
@@ -247,9 +245,7 @@ impl<T> Arena<T> {
                 Entry::Free { next_free } => {
                     self.free_list_head = next_free;
                     self.len += 1;
-                    Some(Index {
-                        index: i,
-                    })
+                    Some(Index { index: i })
                 }
             },
         }
@@ -349,9 +345,7 @@ impl<T> Arena<T> {
                 self.len -= 1;
 
                 match entry {
-                    Entry::Occupied {
-                        value,
-                    } => Some(value),
+                    Entry::Occupied { value } => Some(value),
                     _ => unreachable!(),
                 }
             }
@@ -380,9 +374,7 @@ impl<T> Arena<T> {
         for i in 0..self.capacity() as u32 {
             let remove = match &mut self.items[i as usize] {
                 Entry::Occupied { value } => {
-                    let index = Index {
-                        index: i,
-                    };
+                    let index = Index { index: i };
                     if predicate(index, value) {
                         None
                     } else {
@@ -435,9 +427,7 @@ impl<T> Arena<T> {
     /// ```
     pub fn get(&self, i: Index) -> Option<&T> {
         match self.items.get(i.index as usize) {
-            Some(Entry::Occupied { value }) => {
-                Some(value)
-            }
+            Some(Entry::Occupied { value }) => Some(value),
             _ => None,
         }
     }
@@ -460,9 +450,7 @@ impl<T> Arena<T> {
     /// ```
     pub fn get_mut(&mut self, i: Index) -> Option<&mut T> {
         match self.items.get_mut(i.index as usize) {
-            Some(Entry::Occupied { value }) => {
-                Some(value)
-            }
+            Some(Entry::Occupied { value }) => Some(value),
             _ => None,
         }
     }
@@ -843,12 +831,7 @@ impl<'a, T> Iterator for Iter<'a, T> {
         loop {
             match self.inner.next() {
                 Some((_, &Entry::Free { .. })) => continue,
-                Some((
-                    index,
-                    &Entry::Occupied {
-                        ref value,
-                    },
-                )) => {
+                Some((index, &Entry::Occupied { ref value })) => {
                     self.len -= 1;
                     let idx = Index {
                         index: index as u32,
@@ -873,12 +856,7 @@ impl<T> DoubleEndedIterator for Iter<'_, T> {
         loop {
             match self.inner.next_back() {
                 Some((_, &Entry::Free { .. })) => continue,
-                Some((
-                    index,
-                    &Entry::Occupied {
-                        ref value,
-                    },
-                )) => {
+                Some((index, &Entry::Occupied { ref value })) => {
                     self.len -= 1;
                     let idx = Index {
                         index: index as u32,
@@ -942,12 +920,7 @@ impl<'a, T> Iterator for IterMut<'a, T> {
         loop {
             match self.inner.next() {
                 Some((_, &mut Entry::Free { .. })) => continue,
-                Some((
-                    index,
-                    &mut Entry::Occupied {
-                        ref mut value,
-                    },
-                )) => {
+                Some((index, &mut Entry::Occupied { ref mut value })) => {
                     self.len -= 1;
                     let idx = Index {
                         index: index as u32,
@@ -972,12 +945,7 @@ impl<T> DoubleEndedIterator for IterMut<'_, T> {
         loop {
             match self.inner.next_back() {
                 Some((_, &mut Entry::Free { .. })) => continue,
-                Some((
-                    index,
-                    &mut Entry::Occupied {
-                        ref mut value,
-                    },
-                )) => {
+                Some((index, &mut Entry::Occupied { ref mut value })) => {
                     self.len -= 1;
                     let idx = Index {
                         index: index as u32,

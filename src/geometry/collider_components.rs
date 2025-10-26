@@ -5,25 +5,28 @@ use crate::pipeline::{ActiveEvents, ActiveHooks};
 use std::ops::{Deref, DerefMut};
 
 /// The unique identifier of a collider added to a collider set.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 #[repr(transparent)]
-pub struct ColliderHandle(pub crate::data::arena::Index);
+pub struct ColliderHandle(pub crate::data::cool_map::CoolKey);
 
 impl ColliderHandle {
     /// Converts this handle into its index components.
-    pub fn into_raw_parts(self) -> u32 {
+    pub fn into_raw_parts(self) -> (u32, u32) {
         self.0.into_raw_parts()
     }
 
     /// Reconstructs an handle from its index components.
-    pub fn from_raw_parts(id: u32) -> Self {
-        Self(crate::data::arena::Index::from_raw_parts(id))
+    pub fn from_raw_parts(key_base: u32, count: u32) -> Self {
+        Self(crate::data::cool_map::CoolKey::from_raw_parts(
+            key_base, count,
+        ))
     }
 
     /// An always-invalid collider handle.
     pub fn invalid() -> Self {
-        Self(crate::data::arena::Index::from_raw_parts(
+        Self(crate::data::cool_map::CoolKey::from_raw_parts(
+            crate::INVALID_U32,
             crate::INVALID_U32,
         ))
     }
