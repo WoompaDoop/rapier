@@ -99,7 +99,11 @@ impl GrumboMap {
 
     pub(crate) fn index_to_key(&self, index: u32) -> CoolKey {
         let index = crate::data::arena::Index::from_raw(index);
-        self.small_accessors[index]
+        if let Some(key) = self.small_accessors.get(index) {
+            return *key;
+        }
+
+        return CoolKey::from_raw_parts(crate::INVALID_U32, crate::INVALID_U32);
     }
 }
 

@@ -25,17 +25,6 @@ impl CoolKey {
     pub fn into_raw_parts(self) -> (u32, u32) {
         (self.key_base, self.count)
     }
-
-    pub fn from_raw(data: u64) -> CoolKey {
-        CoolKey {
-            key_base: (data >> 32) as u32,
-            count: data as u32,
-        }
-    }
-
-    pub fn into_raw(self) -> u64 {
-        ((self.key_base as u64) << 32) | (self.count as u64)
-    }
 }
 
 #[derive(Clone, Debug)]
