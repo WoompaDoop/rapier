@@ -880,7 +880,7 @@ mod test {
 
         let h1a = bodies.insert(0, rb.clone());
         let h2a = bodies.insert(0, rb.clone());
-        let h3a = bodies.insert(0 ,rb.clone());
+        let h3a = bodies.insert(0, rb.clone());
 
         let h1b = bodies2.insert(0, rb.clone());
         let h2b = bodies2.insert(0, rb.clone());

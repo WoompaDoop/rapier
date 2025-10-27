@@ -99,8 +99,7 @@ impl BroadPhaseBvh {
         // Removals must be handled first, in case another collider in
         // `modified_colliders` shares the same index.
         for handle in removed_colliders {
-            self.tree
-                .remove(colliders.handle_to_index(&handle));
+            self.tree.remove(colliders.handle_to_index(&handle));
         }
 
         // if modified_colliders.is_empty() {
@@ -126,7 +125,7 @@ impl BroadPhaseBvh {
 
                 self.tree.insert_or_update_partially(
                     aabb,
-                    colliders.colliders.key_to_index(&modified.0),
+                    colliders.handle_to_index(modified),
                     change_detection_skin,
                 );
             }
@@ -180,7 +179,7 @@ impl BroadPhaseBvh {
         let mut pairs_collector = |co1: u32, co2: u32| {
             assert_ne!(co1, co2);
             let mut handle1 = colliders.index_to_handle(co1);
-            let mut handle2 = colliders.index_to_handle(co1);
+            let mut handle2 = colliders.index_to_handle(co2);
 
             let Some(_) = colliders.get(handle1) else {
                 return;
