@@ -194,12 +194,12 @@ mod test {
 
         let num_segments = 10;
         let body = RigidBodyBuilder::fixed();
-        let mut last_body = bodies.insert(body);
+        let mut last_body = bodies.insert(0, body);
         let mut last_link = MultibodyJointHandle::invalid();
 
         for _ in 0..num_segments {
             let body = RigidBodyBuilder::dynamic().can_sleep(false);
-            let new_body = bodies.insert(body);
+            let new_body = bodies.insert(0, body);
 
             #[cfg(feature = "dim2")]
             let builder = RevoluteJointBuilder::new();
@@ -209,7 +209,7 @@ mod test {
                 .local_anchor1((Vector::y() * (0.5 / num_segments as Real)).into())
                 .local_anchor2((Vector::y() * (-0.5 / num_segments as Real)).into());
             last_link = multibodies
-                .insert(last_body, new_body, link_ab, true)
+                .insert(0, last_body, new_body, link_ab, true)
                 .unwrap();
 
             last_body = new_body;

@@ -195,7 +195,7 @@ mod tests {
             .active_events(ActiveEvents::COLLISION_EVENTS)
             .build();
 
-        let a_handle = collider_set.insert(collider_a);
+        let a_handle = collider_set.insert(0, collider_a);
 
         let collider_b = ColliderBuilder::cuboid(1.0, 1.0, 1.0)
             .active_collision_types(ActiveCollisionTypes::all())
@@ -203,7 +203,7 @@ mod tests {
             .active_events(ActiveEvents::COLLISION_EVENTS)
             .build();
 
-        let _ = collider_set.insert(collider_b);
+        let _ = collider_set.insert(0, collider_b);
 
         let integration_parameters = IntegrationParameters::default();
         let mut broad_phase = BroadPhaseBvh::new();
@@ -246,7 +246,7 @@ mod tests {
             .active_events(ActiveEvents::COLLISION_EVENTS)
             .build();
 
-        let a_handle = collider_set.insert(collider_a);
+        let a_handle = collider_set.insert(0, collider_a);
 
         let collider_b = ColliderBuilder::cuboid(1.0, 1.0)
             .active_collision_types(ActiveCollisionTypes::all())
@@ -254,7 +254,7 @@ mod tests {
             .active_events(ActiveEvents::COLLISION_EVENTS)
             .build();
 
-        let _ = collider_set.insert(collider_b);
+        let _ = collider_set.insert(0, collider_b);
 
         let integration_parameters = IntegrationParameters::default();
         let mut broad_phase = BroadPhaseBvh::new();

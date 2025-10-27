@@ -100,7 +100,7 @@ impl BroadPhaseBvh {
         // `modified_colliders` shares the same index.
         for handle in removed_colliders {
             self.tree
-                .remove(colliders.colliders.key_to_index(&handle.0));
+                .remove(colliders.handle_to_index(&handle));
         }
 
         // if modified_colliders.is_empty() {

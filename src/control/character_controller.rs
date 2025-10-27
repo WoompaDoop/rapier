@@ -953,9 +953,9 @@ mod test {
          * Create a flat ground
          */
         let rigid_body = RigidBodyBuilder::fixed().translation(vector![0.0, -ground_height, 0.0]);
-        let floor_handle = bodies.insert(rigid_body);
+        let floor_handle = bodies.insert(0, rigid_body);
         let collider = ColliderBuilder::cuboid(ground_size, ground_height, ground_size);
-        colliders.insert_with_parent(collider, floor_handle, &mut bodies);
+        colliders.insert_with_parent(0, collider, floor_handle, &mut bodies);
 
         /*
          * Create a slope we can climb.
@@ -965,7 +965,7 @@ mod test {
         let collider = ColliderBuilder::cuboid(slope_size, ground_height, slope_size)
             .translation(vector![0.1 + slope_size, -ground_height + 0.4, 0.0])
             .rotation(Vector::z() * slope_angle);
-        colliders.insert(collider);
+        colliders.insert(0, collider);
 
         /*
          * Create a slope we can’t climb.
@@ -979,7 +979,7 @@ mod test {
                 0.0
             ])
             .rotation(Vector::z() * impossible_slope_angle);
-        colliders.insert(collider);
+        colliders.insert(0, collider);
 
         let integration_parameters = IntegrationParameters::default();
 
@@ -988,21 +988,21 @@ mod test {
             .additional_mass(1.0)
             .build();
         character_body_can_climb.set_translation(Vector::new(0.6, 0.5, 0.0), false);
-        let character_handle_can_climb = bodies.insert(character_body_can_climb);
+        let character_handle_can_climb = bodies.insert(0, character_body_can_climb);
 
         let collider = ColliderBuilder::ball(0.5).build();
-        colliders.insert_with_parent(collider.clone(), character_handle_can_climb, &mut bodies);
+        colliders.insert_with_parent(0, collider.clone(), character_handle_can_climb, &mut bodies);
 
         // Initialize character which cannot climb
         let mut character_body_cannot_climb = RigidBodyBuilder::kinematic_position_based()
             .additional_mass(1.0)
             .build();
         character_body_cannot_climb.set_translation(Vector::new(-0.6, 0.5, 0.0), false);
-        let character_handle_cannot_climb = bodies.insert(character_body_cannot_climb);
+        let character_handle_cannot_climb = bodies.insert(0, character_body_cannot_climb);
 
         let collider = ColliderBuilder::ball(0.5).build();
         let character_shape = collider.shape();
-        colliders.insert_with_parent(collider.clone(), character_handle_cannot_climb, &mut bodies);
+        colliders.insert_with_parent(0, collider.clone(), character_handle_cannot_climb, &mut bodies);
 
         for i in 0..200 {
             // Step once
@@ -1098,9 +1098,9 @@ mod test {
          */
         let rigid_body =
             RigidBodyBuilder::fixed().translation(vector![0.0, -ground_height / 2f32, 0.0]);
-        let floor_handle = bodies.insert(rigid_body);
+        let floor_handle = bodies.insert(0, rigid_body);
         let collider = ColliderBuilder::cuboid(ground_size, ground_height, ground_size);
-        colliders.insert_with_parent(collider, floor_handle, &mut bodies);
+        colliders.insert_with_parent(0, collider, floor_handle, &mut bodies);
 
         let integration_parameters = IntegrationParameters::default();
 
@@ -1113,10 +1113,10 @@ mod test {
             .additional_mass(1.0)
             .build();
         character_body_snap.set_translation(Vector::new(0.6, 0.5, 0.0), false);
-        let character_handle_snap = bodies.insert(character_body_snap);
+        let character_handle_snap = bodies.insert(0, character_body_snap);
 
         let collider = ColliderBuilder::ball(0.5).build();
-        colliders.insert_with_parent(collider.clone(), character_handle_snap, &mut bodies);
+        colliders.insert_with_parent(0, collider.clone(), character_handle_snap, &mut bodies);
 
         // Initialize character without snap to ground
         let character_controller_no_snap = KinematicCharacterController {
@@ -1127,11 +1127,11 @@ mod test {
             .additional_mass(1.0)
             .build();
         character_body_no_snap.set_translation(Vector::new(-0.6, 0.5, 0.0), false);
-        let character_handle_no_snap = bodies.insert(character_body_no_snap);
+        let character_handle_no_snap = bodies.insert(0, character_body_no_snap);
 
         let collider = ColliderBuilder::ball(0.5).build();
         let character_shape = collider.shape();
-        colliders.insert_with_parent(collider.clone(), character_handle_no_snap, &mut bodies);
+        colliders.insert_with_parent(0, collider.clone(), character_handle_no_snap, &mut bodies);
 
         for i in 0..10000 {
             // Step once

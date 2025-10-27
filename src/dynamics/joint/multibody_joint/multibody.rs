@@ -1389,19 +1389,19 @@ mod test {
         let mut bodies = RigidBodySet::new();
         let mut joints = MultibodyJointSet::new();
 
-        let a = bodies.insert(RigidBodyBuilder::dynamic());
-        let b = bodies.insert(RigidBodyBuilder::dynamic());
-        let c = bodies.insert(RigidBodyBuilder::dynamic());
-        let d = bodies.insert(RigidBodyBuilder::dynamic());
+        let a = bodies.insert(0, RigidBodyBuilder::dynamic());
+        let b = bodies.insert(0, RigidBodyBuilder::dynamic());
+        let c = bodies.insert(0, RigidBodyBuilder::dynamic());
+        let d = bodies.insert(0, RigidBodyBuilder::dynamic());
 
         #[cfg(feature = "dim2")]
         let joint = RevoluteJoint::new();
         #[cfg(feature = "dim3")]
         let joint = RevoluteJoint::new(na::Vector::x_axis());
 
-        let mb_handle = joints.insert(a, b, joint, true).unwrap();
-        joints.insert(c, d, joint, true).unwrap();
-        joints.insert(b, c, joint, true).unwrap();
+        let mb_handle = joints.insert(0, a, b, joint, true).unwrap();
+        joints.insert(0, c, d, joint, true).unwrap();
+        joints.insert(0, b, c, joint, true).unwrap();
 
         assert_eq!(joints.get(mb_handle).unwrap().0.ndofs, SPATIAL_DIM + 3);
     }
@@ -1418,7 +1418,7 @@ mod test {
             let mut handles = vec![];
 
             for _ in 0..num_links {
-                handles.push(bodies.insert(RigidBodyBuilder::dynamic()));
+                handles.push(bodies.insert(0, RigidBodyBuilder::dynamic()));
             }
 
             let mut insertion_id: Vec<_> = (0..num_links - 1).collect();
@@ -1446,7 +1446,7 @@ mod test {
             let mut mb_handle = MultibodyJointHandle::invalid();
             for i in insertion_id {
                 mb_handle = multibody_joints
-                    .insert(handles[i], handles[i + 1], joint, true)
+                    .insert(0, handles[i], handles[i + 1], joint, true)
                     .unwrap();
             }
 
@@ -1472,7 +1472,7 @@ mod test {
             let mut handles = vec![];
 
             for _ in 0..num_links {
-                handles.push(bodies.insert(RigidBodyBuilder::dynamic()));
+                handles.push(bodies.insert(0, RigidBodyBuilder::dynamic()));
             }
 
             #[cfg(feature = "dim2")]
@@ -1482,7 +1482,7 @@ mod test {
 
             for i in 0..num_links - 1 {
                 multibody_joints
-                    .insert(handles[i], handles[i + 1], joint, true)
+                    .insert(0, handles[i], handles[i + 1], joint, true)
                     .unwrap();
             }
 
