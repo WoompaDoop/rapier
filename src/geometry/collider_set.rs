@@ -21,106 +21,6 @@ impl HasModifiedFlag for Collider {
     }
 }
 
-// Keeps data for turning the 8 byte keys I use into 4 byte user data by the Bvh tree in parry
-#[derive(Clone, Default, Debug)]
-#[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
-pub struct GrumboMap {
-    pub(crate) small_accessors: Arena<CoolKey>,
-    pub(crate) accessor_map: HashMap<CoolKey, u32>,
-    pub(crate) colliders: CoolMap<Collider>,
-}
-
-impl GrumboMap {
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&CoolKey, &Collider)> {
-        self.colliders.iter()
-    }
-
-    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&CoolKey, &mut Collider)> {
-        self.colliders.iter_mut()
-    }
-
-    pub(crate) fn values(&self) -> impl Iterator<Item = &Collider> {
-        self.colliders.values()
-    }
-
-    pub(crate) fn values_mut(&mut self) -> impl Iterator<Item = &mut Collider> {
-        self.colliders.values_mut()
-    }
-
-    /// Returns how many colliders are currently in this collection.
-    pub(crate) fn len(&self) -> usize {
-        self.colliders.len()
-    }
-
-    /// Returns `true` if there are no colliders in this collection.
-    pub(crate) fn is_empty(&self) -> bool {
-        self.colliders.is_empty()
-    }
-
-    /// Checks if the given handle points to a valid collider that still exists.
-    pub(crate) fn contains_key(&self, key: &CoolKey) -> bool {
-        self.colliders.contains_key(key)
-    }
-
-    pub(crate) fn insert(&mut self, key_base: u32, value: Collider) -> CoolKey {
-        let key = self.colliders.insert(key_base, value);
-        let index = self.small_accessors.insert(key);
-        self.accessor_map.insert(key, index.into_raw());
-        key
-    }
-
-    pub(crate) fn remove(&mut self, k: &CoolKey) -> Option<Collider> {
-        let Some(collider) = self.colliders.remove(k) else {
-            return None;
-        };
-
-        let index = crate::data::arena::Index::from_raw(self.accessor_map.remove(k).unwrap());
-
-        self.small_accessors.remove(index);
-
-        Some(collider)
-    }
-
-    pub(crate) fn get(&self, k: &CoolKey) -> Option<&Collider> {
-        self.colliders.get(k)
-    }
-
-    pub(crate) fn get_mut(&mut self, k: &CoolKey) -> Option<&mut Collider> {
-        self.colliders.get_mut(k)
-    }
-
-    pub(crate) fn key_to_index(&self, k: &CoolKey) -> u32 {
-        if let Some(index) = self.accessor_map.get(k) {
-            return *index;
-        }
-
-        return crate::INVALID_U32;
-    }
-
-    pub(crate) fn index_to_key(&self, index: u32) -> CoolKey {
-        let index = crate::data::arena::Index::from_raw(index);
-        if let Some(key) = self.small_accessors.get(index) {
-            return *key;
-        }
-
-        return CoolKey::from_raw_parts(crate::INVALID_U32, crate::INVALID_U32);
-    }
-}
-
-impl Index<CoolKey> for GrumboMap {
-    type Output = Collider;
-
-    fn index(&self, key: CoolKey) -> &Collider {
-        &self.colliders[key]
-    }
-}
-
-impl IndexMut<CoolKey> for GrumboMap {
-    fn index_mut(&mut self, key: CoolKey) -> &mut Collider {
-        self.colliders.get_mut(&key).unwrap()
-    }
-}
-
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 #[derive(Clone, Default, Debug)]
 /// The collection that stores all colliders (collision shapes) in your physics world.
@@ -147,7 +47,7 @@ impl IndexMut<CoolKey> for GrumboMap {
 /// );
 /// ```
 pub struct ColliderSet {
-    pub(crate) colliders: GrumboMap,
+    pub(crate) colliders: CoolMap<Collider>,
     pub(crate) modified_colliders: ModifiedColliders,
     pub(crate) removed_colliders: Vec<ColliderHandle>,
 }
@@ -156,24 +56,18 @@ impl ColliderSet {
     /// Creates a new empty collection of colliders.
     pub fn new() -> Self {
         ColliderSet {
-            colliders: GrumboMap::default(),
+            colliders: CoolMap::default(),
             modified_colliders: Default::default(),
             removed_colliders: Vec::new(),
         }
     }
 
     pub(crate) fn index_to_handle(&self, index: u32) -> ColliderHandle {
-        // ColliderHandle(self.colliders.index_to_key(index))
-        let b = index >> 16;
-        let i = (index as u16) as u32;
-        ColliderHandle::from_raw_parts(b, i)
+        ColliderHandle::from_raw_parts(index)
     }
 
     pub(crate) fn handle_to_index(&self, handle: &ColliderHandle) -> u32 {
-        // self.colliders.key_to_index(&handle.0)
-        let (b, i) = handle.into_raw_parts();
-        let b = b << 16;
-        b | i
+        handle.into_raw_parts()
     }
 
     pub(crate) fn take_modified(&mut self) -> ModifiedColliders {
@@ -192,7 +86,7 @@ impl ColliderSet {
     ///
     /// Useful as a sentinel/placeholder value.
     pub fn invalid_handle() -> ColliderHandle {
-        ColliderHandle::from_raw_parts(crate::INVALID_U32, crate::INVALID_U32)
+        ColliderHandle::from_raw_parts(crate::INVALID_U32)
     }
 
     /// Iterates over all colliders in this collection.

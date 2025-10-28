@@ -17,21 +17,20 @@ pub struct ImpulseJointHandle(pub crate::data::cool_map::CoolKey);
 
 impl ImpulseJointHandle {
     /// Converts this handle into its index component.
-    pub fn into_raw_parts(self) -> (u32, u32) {
+    pub fn into_raw_parts(self) -> u32 {
         self.0.into_raw_parts()
     }
 
     /// Reconstructs an handle from its (index, generation) components.
-    pub fn from_raw_parts(base_key: u32, count: u32) -> Self {
+    pub fn from_raw_parts(index: u32) -> Self {
         Self(crate::data::cool_map::CoolKey::from_raw_parts(
-            base_key, count,
+            index
         ))
     }
 
     /// An always-invalid joint handle.
     pub fn invalid() -> Self {
         Self(crate::data::cool_map::CoolKey::from_raw_parts(
-            crate::INVALID_U32,
             crate::INVALID_U32,
         ))
     }

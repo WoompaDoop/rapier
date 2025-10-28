@@ -7,23 +7,22 @@ use std::{
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde-serialize", derive(Serialize, Deserialize))]
 pub struct CoolKey {
-    key_base: u32,
-    count: u32,
+    index: u32,
 }
 
 impl Default for CoolKey {
     fn default() -> Self {
-        Self::from_raw_parts(crate::INVALID_U32, crate::INVALID_U32)
+        Self::from_raw_parts(crate::INVALID_U32)
     }
 }
 
 impl CoolKey {
-    pub fn from_raw_parts(key_base: u32, count: u32) -> CoolKey {
-        CoolKey { key_base, count }
+    pub fn from_raw_parts(index: u32) -> CoolKey {
+        CoolKey { index }
     }
 
-    pub fn into_raw_parts(self) -> (u32, u32) {
-        (self.key_base, self.count)
+    pub fn into_raw_parts(self) -> u32 {
+        self.index
     }
 }
 
@@ -53,8 +52,7 @@ impl<T> CoolMap<T> {
     }
 
     pub fn insert(&mut self, key_base: u32, value: T) -> CoolKey {
-        let count = self.tree.keys().filter(|x| x.key_base == key_base).count() as u32;
-        let key = CoolKey { key_base, count };
+        let key = CoolKey { index: key_base };
         self.tree.insert(key, value);
         key
     }
