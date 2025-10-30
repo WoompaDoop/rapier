@@ -63,11 +63,11 @@ impl ColliderSet {
     }
 
     pub(crate) fn index_to_handle(&self, index: u32) -> ColliderHandle {
-        ColliderHandle::from_raw_parts(index)
+        ColliderHandle(self.colliders.index_to_key(index))
     }
 
     pub(crate) fn handle_to_index(&self, handle: &ColliderHandle) -> u32 {
-        handle.into_raw_parts()
+        self.colliders.key_to_index(&handle.0)
     }
 
     pub(crate) fn take_modified(&mut self) -> ModifiedColliders {
