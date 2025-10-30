@@ -113,11 +113,11 @@ impl<T> CoolMap<T> {
     }
 
     pub fn index_to_key(&self, index: u32) -> CoolKey {
-        self.index_to_key[index as usize]
+        *self.index_to_key.get(index as usize).unwrap_or(&CoolKey::default())
     }
 
     pub fn key_to_index(&self, key: &CoolKey) -> u32 {
-        self.key_to_index[key]
+        *self.key_to_index.get(key).unwrap_or(&crate::INVALID_U32)
     }
 
     fn remake_index_maps(&mut self) {
